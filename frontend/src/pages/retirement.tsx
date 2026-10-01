@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { assets as assetsApi, recurring as recurringApi } from '@/lib/api'
 import { computeRetirement, type IncomeKind, type IncomeLine } from '@/lib/retirement'
 import { formatCurrency } from '@/lib/format'
@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { PageHeader } from '@/components/page-header'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RetirementProjection } from '@/components/retirement-projection'
 
 const EXCLUDED_KEY = 'retirement:excluded-income'
@@ -39,6 +40,8 @@ export default function RetirementPage() {
   const { user } = useAuth()
   const currency = user?.preferences?.currency_display ?? 'USD'
   const [excluded, setExcluded] = useState<Set<string>>(loadExcluded)
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'projection' ? 'projection' : 'overview'
 
   const { data: items, isLoading } = useQuery({
     queryKey: ['recurring'],
@@ -78,69 +81,87 @@ export default function RetirementPage() {
     <div>
       <PageHeader section={t('nav.groupAnalysis')} title={t('retirement.title')} />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <Tile label={t('retirement.tileIncome')} value={money(summary.incomeMonthly)} hint={t('retirement.perYear', { amount: money(summary.incomeMonthly * 12) })} />
-        <Tile label={t('retirement.tileOutgoing')} value={money(summary.outgoingMonthly)} hint={t('retirement.perYear', { amount: money(summary.outgoingMonthly * 12) })} />
-        <Tile
-          label={t('retirement.tileCoverage')}
-          value={covered != null ? `${covered}%` : '—'}
-          hint={t('retirement.coverageHint')}
-        />
-        <Tile
-          label={shortfall ? t('retirement.tileShortfall') : t('retirement.tileSurplus')}
-          value={money(Math.abs(summary.surplusMonthly))}
-          hint={t('retirement.perYear', { amount: money(Math.abs(summary.surplusMonthly) * 12) })}
-          tone={shortfall ? 'negative' : 'positive'}
-        />
-      </div>
+      <Tabs value={tab} onValueChange={(value) => setParams(value === 'projection' ? { tab: 'projection' } : {})}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="overview">{t('retirement.tabOverview')}</TabsTrigger>
+          <TabsTrigger value="projection">{t('retirement.tabProjection')}</TabsTrigger>
+        </TabsList>
 
-      <RetirementProjection items={items ?? []} assets={assetList ?? []} excluded={excluded} currency={currency} locale={locale} />
+        <TabsContent value="overview">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            <Tile label={t('retirement.tileIncome')} value={money(summary.incomeMonthly)} hint={t('retirement.perYear', { amount: money(summary.incomeMonthly * 12) })} />
+            <Tile label={t('retirement.tileOutgoing')} value={money(summary.outgoingMonthly)} hint={t('retirement.perYear', { amount: money(summary.outgoingMonthly * 12) })} />
+            <Tile
+              label={t('retirement.tileCoverage')}
+              value={covered != null ? `${covered}%` : '—'}
+              hint={t('retirement.coverageHint')}
+            />
+            <Tile
+              label={shortfall ? t('retirement.tileShortfall') : t('retirement.tileSurplus')}
+              value={money(Math.abs(summary.surplusMonthly))}
+              hint={t('retirement.perYear', { amount: money(Math.abs(summary.surplusMonthly) * 12) })}
+              tone={shortfall ? 'negative' : 'positive'}
+            />
+          </div>
 
-      {summary.skipped > 0 && (
-        <p className="text-xs text-amber-700 mb-3">{t('retirement.skipped', { count: summary.skipped })}</p>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card title={t('retirement.incomeTitle')} subtitle={t('retirement.incomeHint')}>
-          {summary.income.length === 0 && !isLoading ? (
-            <p className="px-5 py-6 text-sm text-muted-foreground">
-              {t('retirement.noIncome')}{' '}
-              <Link to="/recurring" className="text-primary hover:underline">{t('retirement.goToRecurring')}</Link>
-            </p>
-          ) : (
-            sections.map(({ kind, title }) => {
-              const lines = summary.income.filter((l) => l.kind === kind)
-              if (lines.length === 0) return null
-              return (
-                <div key={kind}>
-                  <p className="px-5 pt-3 pb-1 text-xs font-medium text-muted-foreground">{title}</p>
-                  <ul className="divide-y divide-border">
-                    {lines.map((line) => (
-                      <IncomeRow key={line.id} line={line} counted={!excluded.has(line.id)} onToggle={() => toggle(line.id)} money={money} />
-                    ))}
-                  </ul>
-                </div>
-              )
-            })
+          {summary.skipped > 0 && (
+            <p className="text-xs text-amber-700 mb-3">{t('retirement.skipped', { count: summary.skipped })}</p>
           )}
-        </Card>
 
-        <Card title={t('retirement.outgoingTitle')} subtitle={t('retirement.outgoingHint')}>
-          <ul className="divide-y divide-border max-h-[32rem] overflow-y-auto">
-            {summary.outgoing.map((line) => (
-              <ToggleRow
-                key={line.item.id}
-                label={line.item.description}
-                detail={t(`recurring.${line.item.frequency}`)}
-                amount={money(line.monthly)}
-                counted={!excluded.has(line.item.id)}
-                onToggle={() => toggle(line.item.id)}
-                ariaLabel={t('retirement.countOutgoing', { name: line.item.description })}
-              />
-            ))}
-          </ul>
-        </Card>
-      </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Card title={t('retirement.incomeTitle')} subtitle={t('retirement.incomeHint')}>
+              {summary.income.length === 0 && !isLoading ? (
+                <p className="px-5 py-6 text-sm text-muted-foreground">
+                  {t('retirement.noIncome')}{' '}
+                  <Link to="/recurring" className="text-primary hover:underline">{t('retirement.goToRecurring')}</Link>
+                </p>
+              ) : (
+                sections.map(({ kind, title }) => {
+                  const lines = summary.income.filter((l) => l.kind === kind)
+                  if (lines.length === 0) return null
+                  return (
+                    <div key={kind}>
+                      <p className="px-5 pt-3 pb-1 text-xs font-medium text-muted-foreground">{title}</p>
+                      <ul className="divide-y divide-border">
+                        {lines.map((line) => (
+                          <IncomeRow key={line.id} line={line} counted={!excluded.has(line.id)} onToggle={() => toggle(line.id)} money={money} />
+                        ))}
+                      </ul>
+                    </div>
+                  )
+                })
+              )}
+            </Card>
+
+            <Card title={t('retirement.outgoingTitle')} subtitle={t('retirement.outgoingHint')}>
+              <ul className="divide-y divide-border max-h-[32rem] overflow-y-auto">
+                {summary.outgoing.map((line) => (
+                  <ToggleRow
+                    key={line.item.id}
+                    label={line.item.description}
+                    detail={t(`recurring.${line.item.frequency}`)}
+                    amount={money(line.monthly)}
+                    counted={!excluded.has(line.item.id)}
+                    onToggle={() => toggle(line.item.id)}
+                    ariaLabel={t('retirement.countOutgoing', { name: line.item.description })}
+                  />
+                ))}
+              </ul>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="projection">
+          <p className="text-xs text-muted-foreground mb-3">
+            {t('retirement.projection.countedOnOverview')}{' '}
+            <button type="button" className="text-primary hover:underline" onClick={() => setParams({})}>
+              {t('retirement.tabOverview')}
+            </button>
+          </p>
+          <RetirementProjection items={items ?? []} assets={assetList ?? []} excluded={excluded} currency={currency} locale={locale} />
+
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

@@ -1323,6 +1323,8 @@
   "retirement": {
     "title": "Retirement",
     "tileIncome": "Passive income",
+    "tabOverview": "Overview",
+    "tabProjection": "Projection",
     "tileOutgoing": "Outgoing",
     "tileCoverage": "Covered by income",
     "tileSurplus": "Surplus",
@@ -1340,6 +1342,7 @@
     "projection": {
       "title": "Projection and what-ifs",
       "subtitle": "How long the money you could spend from lasts, year by year.",
+      "countedOnOverview": "Which income and outgoing lines count is set on the",
       "runway": "Runway",
       "runwayBaseline": "Runway without what-ifs",
       "baselineHint": "Assets outlast outgoings for this long",
