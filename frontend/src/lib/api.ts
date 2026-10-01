@@ -44,6 +44,7 @@ import type {
   InvoiceSettings,
   InvoiceSummary,
   RecurringTransaction,
+  RecurringSuggestion,
   ProjectedTransaction,
   TransactionCalendarResponse,
   Rule,
@@ -1053,8 +1054,18 @@ export const recurring = {
     const { data } = await api.get('/recurring-transactions')
     return data
   },
-  create: async (rt: Partial<RecurringTransaction>): Promise<RecurringTransaction> => {
+  create: async (
+    rt: Partial<RecurringTransaction> & { skip_first?: boolean; source_transaction_id?: string },
+  ): Promise<RecurringTransaction> => {
     const { data } = await api.post('/recurring-transactions', rt)
+    return data
+  },
+  linkTransaction: async (recurringId: string, transactionId: string): Promise<RecurringTransaction> => {
+    const { data } = await api.post(`/recurring-transactions/${recurringId}/link/${transactionId}`)
+    return data
+  },
+  suggestion: async (transactionId: string): Promise<RecurringSuggestion> => {
+    const { data } = await api.get(`/recurring-transactions/suggestion/${transactionId}`)
     return data
   },
   update: async (id: string, rt: Partial<RecurringTransaction>): Promise<RecurringTransaction> => {

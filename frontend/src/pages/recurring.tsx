@@ -29,6 +29,7 @@ import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { formatCurrency } from '@/lib/format'
+import { computeRecurringTotals } from '@/lib/recurring-totals'
 
 const TH = 'text-xs font-medium text-muted-foreground py-3'
 
@@ -158,8 +159,34 @@ function RecurringTab() {
     return map[f] ?? f
   }
 
+  const totals = computeRecurringTotals(recurringList ?? [], userCurrency)
+  const monthlyCount = (recurringList ?? []).filter((r) => r.is_active && r.type === 'debit' && r.frequency === 'monthly').length
+  const yearlyCount = (recurringList ?? []).filter((r) => r.is_active && r.type === 'debit' && r.frequency === 'yearly').length
+
   return (
     <>
+      {recurringList && recurringList.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+          {[
+            { label: t('recurring.totalMonthly'), value: totals.monthly, hint: t('recurring.totalMonthlyHint', { count: monthlyCount }) },
+            { label: t('recurring.totalYearly'), value: totals.yearly, hint: t('recurring.totalYearlyHint', { count: yearlyCount }) },
+            {
+              label: t('recurring.totalPerMonth'),
+              value: totals.perMonth,
+              hint: t('recurring.totalPerMonthHint', { year: mask(formatCurrency(totals.perYear, userCurrency, locale)) }),
+            },
+          ].map((tile) => (
+            <div key={tile.label} className="bg-card rounded-xl border border-border shadow-sm px-4 sm:px-5 py-4">
+              <p className="text-xs font-medium text-muted-foreground">{tile.label}</p>
+              <p className="text-xl font-semibold text-foreground mt-1">{mask(formatCurrency(tile.value, userCurrency, locale))}</p>
+              <p className="text-xs text-muted-foreground mt-1">{tile.hint}</p>
+            </div>
+          ))}
+          {totals.skipped > 0 && (
+            <p className="sm:col-span-3 text-xs text-amber-700">{t('recurring.totalSkipped', { count: totals.skipped })}</p>
+          )}
+        </div>
+      )}
       <SectionCard>
         <SectionHeader
           title={t('recurring.title')}
@@ -341,7 +368,7 @@ function RecurringForm({
   const [categoryId, setCategoryId] = useState(recurring?.category_id ?? '')
   const [accountId, setAccountId] = useState(recurring?.account_id ?? sortedAccounts[0]?.id ?? '')
   const [isActive, setIsActive] = useState(recurring?.is_active ?? true)
-  const [autoGenerate, setAutoGenerate] = useState(recurring?.auto_generate ?? true)
+  const [autoGenerate, setAutoGenerate] = useState(recurring?.auto_generate ?? false)
 
   const selectClass = 'w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary'
 

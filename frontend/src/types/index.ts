@@ -539,6 +539,34 @@ export interface RecurringTransaction {
   fx_rate_used: number | null
 }
 
+export interface ExistingRecurringMatch {
+  id: string
+  description: string
+  amount: string | number
+  currency: string
+  amount_primary: number | null
+  frequency: RecurringTransaction['frequency']
+  next_occurrence: string
+  difference_pct: number
+  same_name: boolean
+}
+
+export interface RecurringSuggestion {
+  match_basis: 'amount_and_name' | 'name' | 'none'
+  frequency: RecurringTransaction['frequency'] | null
+  confidence: 'high' | 'medium' | 'low' | 'none'
+  occurrences: number
+  first_date: string | null
+  last_date: string | null
+  average_gap_days: number | null
+  typical_amount: string | number | null
+  amount_varies: boolean
+  day_of_month: number | null
+  next_occurrence: string | null
+  dates: string[]
+  existing_matches: ExistingRecurringMatch[]
+}
+
 export interface ProjectedTransaction {
   recurring_id: string
   account_id: string | null

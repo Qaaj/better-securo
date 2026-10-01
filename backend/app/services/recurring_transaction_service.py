@@ -64,6 +64,20 @@ async def create_recurring_transaction(
     data: RecurringTransactionCreate,
 ) -> RecurringTransaction:
     await _verify_account_in_workspace(session, workspace_id, data.account_id)
+    source_tx: Optional[Transaction] = None
+    if data.source_transaction_id is not None:
+        source_tx = (
+            await session.execute(
+                select(Transaction).where(
+                    Transaction.id == data.source_transaction_id,
+                    Transaction.workspace_id == workspace_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if source_tx is None:
+            raise ValueError("Transaction not found")
+        if source_tx.recurring_transaction_id is not None:
+            raise ValueError("Transaction is already linked to a recurring item")
     next_occ = data.start_date
     if data.skip_first:
         next_occ = _advance_date(
@@ -89,6 +103,8 @@ async def create_recurring_transaction(
     )
     session.add(recurring)
     await session.flush()
+    if source_tx is not None:
+        source_tx.recurring_transaction_id = recurring.id
     await stamp_primary_amount(
         session, user_id, recurring,
         date_field="start_date",
@@ -152,6 +168,36 @@ async def delete_recurring_transaction(
     await session.delete(recurring)
     await session.commit()
     return True
+
+
+async def link_transaction(
+    session: AsyncSession,
+    recurring_id: uuid.UUID,
+    transaction_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+) -> Optional[RecurringTransaction]:
+    """Link an existing transaction to an existing recurring item as its latest
+    occurrence, moving the schedule past it. None when either is missing."""
+    recurring = await get_recurring_transaction(session, recurring_id, workspace_id)
+    tx = (
+        await session.execute(
+            select(Transaction).where(
+                Transaction.id == transaction_id, Transaction.workspace_id == workspace_id
+            )
+        )
+    ).scalar_one_or_none()
+    if recurring is None or tx is None:
+        return None
+    if tx.recurring_transaction_id is not None:
+        raise ValueError("Transaction is already linked to a recurring item")
+    tx.recurring_transaction_id = recurring.id
+    while recurring.next_occurrence <= tx.date:
+        recurring.next_occurrence = _advance_date(
+            recurring.next_occurrence, recurring.frequency, intended_day=recurring.day_of_month
+        )
+    await session.commit()
+    await session.refresh(recurring)
+    return recurring
 
 
 def _advance_months(current: date, months: int, intended_day: int) -> date:

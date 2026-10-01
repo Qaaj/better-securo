@@ -45,6 +45,7 @@ async def _make_bill(session, test_workspace, test_user, account, **overrides):
         frequency=overrides.pop("frequency", "monthly"),
         start_date=overrides.pop("start_date", date(2025, 1, 10)),
         account_id=account.id,
+        auto_generate=overrides.pop("auto_generate", True),
         **overrides,
     )
     return await create_recurring_transaction(session, test_workspace.id, test_user.id, data)
