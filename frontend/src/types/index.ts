@@ -699,6 +699,12 @@ export interface Asset {
   growth_rate: number | null
   growth_frequency: string | null
   growth_start_date: string | null
+  /** Modelled income for the retirement forecast. */
+  income_mode: 'yield' | 'fixed' | null
+  income_rate: number | null
+  income_amount: number | null
+  income_frequency: 'monthly' | 'quarterly' | 'semiannual' | 'yearly' | null
+  sell_percent_per_year: number | null
   is_archived: boolean
   position: number
   current_value: number | null

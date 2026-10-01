@@ -13,6 +13,7 @@ export const MODULE_IDS = [
   'reports',
   'assets',
   'recurring',
+  'retirement',
   'categories',
   'payees',
   'rules',

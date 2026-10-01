@@ -21,6 +21,7 @@ describe('MODULE_IDS', () => {
         'payees',
         'recurring',
         'reports',
+        'retirement',
         'rules',
         'transactions',
       ].sort(),

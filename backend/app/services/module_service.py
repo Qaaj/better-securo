@@ -52,6 +52,7 @@ class ModuleId(str, Enum):
     REPORTS = "reports"
     ASSETS = "assets"
     RECURRING = "recurring"
+    RETIREMENT = "retirement"
     CATEGORIES = "categories"
     PAYEES = "payees"
     RULES = "rules"
@@ -77,6 +78,7 @@ CATALOG: Mapping[ModuleId, ModuleSpec] = {
         ModuleSpec(ModuleId.REPORTS, default_enabled=True),
         ModuleSpec(ModuleId.ASSETS, default_enabled=True),
         ModuleSpec(ModuleId.RECURRING, default_enabled=True),
+        ModuleSpec(ModuleId.RETIREMENT, default_enabled=True),
         ModuleSpec(ModuleId.CATEGORIES, default_enabled=True),
         ModuleSpec(ModuleId.PAYEES, default_enabled=True),
         ModuleSpec(ModuleId.RULES, default_enabled=True),

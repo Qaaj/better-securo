@@ -29,6 +29,7 @@ PERSONAL_MODULES = [
     "payees",
     "recurring",
     "reports",
+    "retirement",
     "rules",
     "transactions",
 ]

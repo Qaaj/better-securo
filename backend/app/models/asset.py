@@ -47,6 +47,16 @@ class Asset(Base):
     growth_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=15, scale=6), nullable=True)
     growth_frequency: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # daily, weekly, monthly, yearly
     growth_start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # Modelled passive income, used by the retirement forecast. Not tied to any
+    # real transaction: `yield` = income_rate % a year of the asset's value
+    # (savings, bonds, dividend stocks); `fixed` = income_amount every
+    # income_frequency (e.g. a rental). sell_percent_per_year is the share of
+    # the holding planned to be sold each year.
+    income_mode: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # yield, fixed
+    income_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=9, scale=4), nullable=True)
+    income_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=15, scale=2), nullable=True)
+    income_frequency: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    sell_percent_per_year: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=6, scale=3), nullable=True)
     purchase_price_primary: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=15, scale=2), nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     position: Mapped[int] = mapped_column(Integer, default=0)

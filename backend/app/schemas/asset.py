@@ -3,7 +3,12 @@ from datetime import date as _date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+IncomeMode = Literal["yield", "fixed"]
+IncomeFrequency = Literal["monthly", "quarterly", "semiannual", "yearly"]
 
 
 class AssetCreate(BaseModel):
@@ -21,6 +26,12 @@ class AssetCreate(BaseModel):
     growth_rate: Optional[Decimal] = None
     growth_frequency: Optional[str] = None
     growth_start_date: Optional[_date] = None
+    # Modelled income for the retirement forecast (see the Asset model).
+    income_mode: Optional[IncomeMode] = None
+    income_rate: Optional[Decimal] = Field(default=None, ge=0, le=100)
+    income_amount: Optional[Decimal] = Field(default=None, ge=0)
+    income_frequency: Optional[IncomeFrequency] = None
+    sell_percent_per_year: Optional[Decimal] = Field(default=None, ge=0, le=100)
     is_archived: bool = False
     position: int = 0
     group_id: Optional[uuid.UUID] = None
@@ -34,6 +45,14 @@ class AssetCreate(BaseModel):
     # médio model, consistent with the transaction ledger). When omitted, the
     # service seeds the buy at the live quote ("bought at market now").
     unit_price: Optional[Decimal] = None
+
+    @model_validator(mode="after")
+    def income_fields_are_complete(self) -> "AssetCreate":
+        if self.income_mode == "yield" and self.income_rate is None:
+            raise ValueError("income_rate is required for a yield")
+        if self.income_mode == "fixed" and (self.income_amount is None or self.income_frequency is None):
+            raise ValueError("income_amount and income_frequency are required for a fixed income")
+        return self
 
     @field_validator("external_id")
     @classmethod
@@ -62,6 +81,11 @@ class AssetUpdate(BaseModel):
     growth_rate: Optional[Decimal] = None
     growth_frequency: Optional[str] = None
     growth_start_date: Optional[_date] = None
+    income_mode: Optional[IncomeMode] = None
+    income_rate: Optional[Decimal] = Field(default=None, ge=0, le=100)
+    income_amount: Optional[Decimal] = Field(default=None, ge=0)
+    income_frequency: Optional[IncomeFrequency] = None
+    sell_percent_per_year: Optional[Decimal] = Field(default=None, ge=0, le=100)
     is_archived: Optional[bool] = None
     position: Optional[int] = None
     # Use a sentinel to differentiate "don't change group" (field omitted)
@@ -88,6 +112,11 @@ class AssetRead(BaseModel):
     growth_rate: Optional[float] = None
     growth_frequency: Optional[str] = None
     growth_start_date: Optional[_date] = None
+    income_mode: Optional[str] = None
+    income_rate: Optional[float] = None
+    income_amount: Optional[float] = None
+    income_frequency: Optional[str] = None
+    sell_percent_per_year: Optional[float] = None
     is_archived: bool
     position: int
     current_value: Optional[float] = None
