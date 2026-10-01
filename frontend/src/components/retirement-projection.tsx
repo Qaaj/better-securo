@@ -2,14 +2,23 @@ import { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Download, Plus, Save, Trash2 } from 'lucide-react'
-import { annualGrowthPercent, assetFixedMonthly, assetValue, computeRetirement, type IncomeLine, type OutgoingLine } from '@/lib/retirement'
 import {
-  defaultDrawable,
   projectRetirement,
   type Assumptions,
   type ProjectionAsset,
   type WhatIf,
 } from '@/lib/retirement-projection'
+import {
+  DEFAULT_PLAN,
+  PLAN_KEY,
+  SCENARIOS_KEY,
+  buildProjectionInputs,
+  read,
+  write,
+  type Plan,
+  type TempAsset,
+} from '@/lib/retirement-plan'
+import type { IncomeLine, OutgoingLine } from '@/lib/retirement'
 import { formatCurrency } from '@/lib/format'
 import { downloadText, printHtml } from '@/lib/download'
 import { buildReport, describeWhatIf, reportToHtml, reportToMarkdown } from '@/lib/retirement-report'
@@ -22,60 +31,6 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { Asset, RecurringTransaction } from '@/types'
-
-/** An asset that exists only in the plan, e.g. "more bonds". */
-interface TempAsset {
-  id: string
-  name: string
-  value: number
-  growthPercent: number
-  yieldPercent: number
-  /** The asset exists from this year (0 = now). Older saved plans have none. */
-  fromYear?: number
-}
-
-interface Plan {
-  /** Lines whose amount stays the same instead of rising with inflation (recurring item ids, `asset:<id>:income`). */
-  flat: string[]
-  assumptions: Assumptions
-  drawable: Record<string, boolean>
-  /** Growth a year the user typed for an asset, over the one its own rule gives. */
-  growth: Record<string, number>
-  /** The order to sell in, when the strategy is "in my order": lower first. */
-  sellOrder: Record<string, number>
-  /** Hypothetical assets to sell from, kept with the plan. */
-  tempAssets: TempAsset[]
-  whatIfs: WhatIf[]
-}
-
-const DEFAULT_PLAN: Plan = {
-  flat: [],
-  assumptions: { horizonYears: 30, inflationPercent: 2, incomeIndexed: true, drawdownStartYear: 0, sellStrategy: 'pro_rata' },
-  drawable: {},
-  growth: {},
-  sellOrder: {},
-  tempAssets: [],
-  whatIfs: [],
-}
-const PLAN_KEY = 'retirement:plan'
-const SCENARIOS_KEY = 'retirement:scenarios'
-
-function read<T>(key: string, fallback: T): T {
-  try {
-    const raw = window.localStorage.getItem(key)
-    return raw ? ({ ...fallback, ...JSON.parse(raw) } as T) : fallback
-  } catch {
-    return fallback
-  }
-}
-
-function write(key: string, value: unknown) {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    // Blocked storage: the plan just does not persist.
-  }
-}
 
 function formatCompact(value: number, currency: string, locale: string) {
   return new Intl.NumberFormat(locale, { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(value)
@@ -116,56 +71,14 @@ export function RetirementProjection({
     setPlan({ ...plan, assumptions: { ...plan.assumptions, [key]: value } })
 
   // What the page already counts feeds the projection, so its switches apply here too.
-  const summary = useMemo(() => computeRetirement(items, assets, currency, excluded), [items, assets, currency, excluded])
-  const flatSet = useMemo(() => new Set(plan.flat ?? []), [plan.flat])
-  const sum = (lines: { monthly: number }[]) => lines.reduce((total, l) => total + l.monthly, 0)
-  const recurringIncome = summary.income.filter((l) => l.kind === 'recurring' && !excluded.has(l.id))
-  const recurringIncomeMonthly = sum(recurringIncome.filter((l) => !flatSet.has(l.id)))
-  const recurringIncomeFlatMonthly = sum(recurringIncome.filter((l) => flatSet.has(l.id)))
-  const countedOutgoing = summary.outgoing.filter((l) => !excluded.has(l.item.id))
-  const outgoingMonthly = sum(countedOutgoing.filter((l) => !flatSet.has(l.item.id)))
-  const outgoingFlatMonthly = sum(countedOutgoing.filter((l) => flatSet.has(l.item.id)))
-
-  const projectionAssets: ProjectionAsset[] = useMemo(() => {
-    const list: ProjectionAsset[] = []
-    for (const asset of assets) {
-      if (asset.is_archived || asset.sell_date) continue
-      const value = assetValue(asset, currency)
-      if (value == null) continue
-      const yielding = asset.income_mode === 'yield' && asset.income_rate != null && !excluded.has(`asset:${asset.id}:income`)
-      const rental = !excluded.has(`asset:${asset.id}:income`) ? assetFixedMonthly(asset, currency) : null
-      list.push({
-        id: asset.id,
-        name: asset.name,
-        value,
-        drawable: plan.drawable[asset.id] ?? defaultDrawable(asset.type, value),
-        growthPercent: plan.growth[asset.id] ?? annualGrowthPercent(asset, value) ?? 0,
-        sellOrder: plan.sellOrder[asset.id],
-        yieldPercent: yielding ? asset.income_rate ?? undefined : undefined,
-        fixedMonthly: rental ?? undefined,
-        fixedFlat: flatSet.has(`asset:${asset.id}:income`) || undefined,
-        sellPercent: asset.sell_percent_per_year && !excluded.has(`asset:${asset.id}:sale`) ? asset.sell_percent_per_year : undefined,
-      })
-    }
-    for (const temp of plan.tempAssets ?? []) {
-      list.push({
-        id: temp.id,
-        name: temp.name,
-        value: temp.value,
-        drawable: plan.drawable[temp.id] ?? true,
-        growthPercent: plan.growth[temp.id] ?? temp.growthPercent,
-        yieldPercent: temp.yieldPercent || undefined,
-        sellOrder: plan.sellOrder[temp.id],
-        temporary: true,
-        startYear: temp.fromYear || undefined,
-      })
-    }
-    return list
-  }, [assets, currency, excluded, flatSet, plan.drawable, plan.growth, plan.sellOrder, plan.tempAssets])
-
-  const base = { recurringIncomeMonthly, recurringIncomeFlatMonthly, outgoingMonthly, outgoingFlatMonthly, assets: projectionAssets, assumptions: plan.assumptions }
-  const baseline = useMemo(() => projectRetirement({ ...base, whatIfs: [] }), [base.recurringIncomeMonthly, base.recurringIncomeFlatMonthly, base.outgoingMonthly, base.outgoingFlatMonthly, projectionAssets, plan.assumptions]) // eslint-disable-line react-hooks/exhaustive-deps
-  const scenario = useMemo(() => projectRetirement({ ...base, whatIfs: plan.whatIfs }), [base.recurringIncomeMonthly, base.recurringIncomeFlatMonthly, base.outgoingMonthly, base.outgoingFlatMonthly, projectionAssets, plan.assumptions, plan.whatIfs]) // eslint-disable-line react-hooks/exhaustive-deps
+  const inputs = useMemo(
+    () => buildProjectionInputs(plan, items, assets, currency, excluded),
+    // The what-ifs only matter to the scenario below.
+    [plan.flat, plan.drawable, plan.growth, plan.sellOrder, plan.tempAssets, plan.assumptions, items, assets, currency, excluded], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const { summary, flatSet, projectionAssets, base } = inputs
+  const baseline = useMemo(() => projectRetirement({ ...base, whatIfs: [] }), [base])
+  const scenario = useMemo(() => projectRetirement({ ...base, whatIfs: plan.whatIfs }), [base, plan.whatIfs])
 
   const thisYear = new Date().getFullYear()
   const horizon = plan.assumptions.horizonYears
