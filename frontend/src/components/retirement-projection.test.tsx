@@ -55,7 +55,26 @@ it('adds a fixed-spend what-if and lists it', async () => {
   const { user } = renderWithProviders(<RetirementProjection {...props} />)
   await user.selectOptions(screen.getByDisplayValue('Extra monthly cost'), 'spend')
   await user.type(screen.getAllByRole('spinbutton').find((el) => (el as HTMLInputElement).step === 'any' && el.closest('div')?.textContent?.includes('Per month')) ?? screen.getByLabelText('Per month'), '1000')
-  await user.click(screen.getByRole('button', { name: /Add/ }))
+  await user.click(screen.getByRole('button', { name: 'Add' }))
   const list = screen.getByText('Spend a fixed amount', { selector: 'span.font-medium' }).closest('li') as HTMLElement
   expect(within(list).getByText(/a month from/)).toBeInTheDocument()
+})
+
+it('adds a temporary asset to the list, counts it, and removes it again', async () => {
+  const { user } = renderWithProviders(<RetirementProjection {...props} />)
+  const runway = () => screen.getByText(/years \(until \d{4}\)|^\d+\+ years$/).textContent
+
+  const before = runway()
+  await user.type(screen.getByPlaceholderText('e.g. more bonds'), 'More bonds')
+  await user.type(screen.getByLabelText(/Amount \(EUR\)/), '200000')
+  await user.click(screen.getByRole('button', { name: 'Add asset' }))
+
+  expect(screen.getByText('More bonds')).toBeInTheDocument()
+  expect(screen.getByText('temporary')).toBeInTheDocument()
+  expect(runway()).not.toBe(before) // 200k more to sell from lengthens the runway
+  expect(JSON.parse(window.localStorage.getItem('retirement:plan') ?? '{}').tempAssets).toHaveLength(1)
+
+  await user.click(screen.getByRole('button', { name: 'Remove More bonds' }))
+  expect(screen.queryByText('More bonds')).not.toBeInTheDocument()
+  expect(runway()).toBe(before)
 })

@@ -19,6 +19,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Asset, RecurringTransaction } from '@/types'
 
+/** An asset that exists only in the plan, e.g. "more bonds". */
+interface TempAsset {
+  id: string
+  name: string
+  value: number
+  growthPercent: number
+  yieldPercent: number
+}
+
 interface Plan {
   assumptions: Assumptions
   drawable: Record<string, boolean>
@@ -26,6 +35,8 @@ interface Plan {
   growth: Record<string, number>
   /** The order to sell in, when the strategy is "in my order": lower first. */
   sellOrder: Record<string, number>
+  /** Hypothetical assets to sell from, kept with the plan. */
+  tempAssets: TempAsset[]
   whatIfs: WhatIf[]
 }
 
@@ -34,6 +45,7 @@ const DEFAULT_PLAN: Plan = {
   drawable: {},
   growth: {},
   sellOrder: {},
+  tempAssets: [],
   whatIfs: [],
 }
 const PLAN_KEY = 'retirement:plan'
@@ -120,8 +132,20 @@ export function RetirementProjection({
         sellPercent: asset.sell_percent_per_year && !excluded.has(`asset:${asset.id}:sale`) ? asset.sell_percent_per_year : undefined,
       })
     }
+    for (const temp of plan.tempAssets ?? []) {
+      list.push({
+        id: temp.id,
+        name: temp.name,
+        value: temp.value,
+        drawable: plan.drawable[temp.id] ?? true,
+        growthPercent: plan.growth[temp.id] ?? temp.growthPercent,
+        yieldPercent: temp.yieldPercent || undefined,
+        sellOrder: plan.sellOrder[temp.id],
+        temporary: true,
+      })
+    }
     return list
-  }, [assets, currency, excluded, plan.drawable, plan.growth, plan.sellOrder])
+  }, [assets, currency, excluded, plan.drawable, plan.growth, plan.sellOrder, plan.tempAssets])
 
   const base = { recurringIncomeMonthly, outgoingMonthly: summary.outgoingMonthly, assets: projectionAssets, assumptions: plan.assumptions }
   const baseline = useMemo(() => projectRetirement({ ...base, whatIfs: [] }), [base.recurringIncomeMonthly, base.outgoingMonthly, projectionAssets, plan.assumptions]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -269,6 +293,10 @@ export function RetirementProjection({
             else next[id] = value
             setPlan({ ...plan, sellOrder: next })
           }}
+          currency={currency}
+          onAddTemp={(temp) => setPlan({ ...plan, tempAssets: [...(plan.tempAssets ?? []), temp] })}
+          onChangeTemp={(id, value) => setPlan({ ...plan, tempAssets: (plan.tempAssets ?? []).map((a) => (a.id === id ? { ...a, value } : a)) })}
+          onRemoveTemp={(id) => setPlan({ ...plan, tempAssets: (plan.tempAssets ?? []).filter((a) => a.id !== id) })}
         />
         <WhatIfs
           whatIfs={plan.whatIfs}
@@ -403,6 +431,10 @@ function SpendFrom({
   onGrowth,
   ordered,
   onOrder,
+  currency,
+  onAddTemp,
+  onChangeTemp,
+  onRemoveTemp,
 }: {
   assets: ProjectionAsset[]
   money: (v: number) => string
@@ -410,8 +442,32 @@ function SpendFrom({
   onGrowth: (id: string, value: number) => void
   ordered: boolean
   onOrder: (id: string, value: number | null) => void
+  currency: string
+  onAddTemp: (temp: TempAsset) => void
+  onChangeTemp: (id: string, value: number) => void
+  onRemoveTemp: (id: string) => void
 }) {
   const { t } = useTranslation()
+  const uid = useId()
+  const [tempName, setTempName] = useState('')
+  const [tempValue, setTempValue] = useState('')
+  const [tempGrowth, setTempGrowth] = useState('')
+  const [tempYield, setTempYield] = useState('')
+  const addTemp = () => {
+    const value = parseFloat(tempValue)
+    if (Number.isNaN(value) || value <= 0) return
+    onAddTemp({
+      id: crypto.randomUUID(),
+      name: tempName.trim() || t('retirement.projection.tempDefaultName'),
+      value,
+      growthPercent: parseFloat(tempGrowth) || 0,
+      yieldPercent: parseFloat(tempYield) || 0,
+    })
+    setTempName('')
+    setTempValue('')
+    setTempGrowth('')
+    setTempYield('')
+  }
   const owned = assets.filter((a) => a.value > 0).sort((a, b) => b.value - a.value)
   return (
     <div>
@@ -427,7 +483,10 @@ function SpendFrom({
               className="size-4 accent-primary shrink-0"
               aria-label={t('retirement.projection.spendFromThis', { name: asset.name })}
             />
-            <span className={cn('min-w-0 flex-1 truncate', !asset.drawable && 'text-muted-foreground')}>{asset.name}</span>
+            <span className={cn('min-w-0 flex-1 truncate', !asset.drawable && 'text-muted-foreground')}>
+              {asset.name}
+              {asset.temporary && <span className="ml-1.5 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">{t('retirement.projection.tempBadge')}</span>}
+            </span>
             {ordered && asset.drawable && (
               <Input
                 type="number"
@@ -456,10 +515,55 @@ function SpendFrom({
               />
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">%</span>
             </span>
-            <span className="shrink-0 w-24 text-right tabular-nums text-xs text-muted-foreground">{money(asset.value)}</span>
+            {asset.temporary ? (
+              <>
+                <Input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={asset.value}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value)
+                    if (!Number.isNaN(v) && v > 0) onChangeTemp(asset.id, v)
+                  }}
+                  className="h-7 w-24 px-1.5 text-right text-xs shrink-0"
+                  aria-label={t('retirement.projection.valueOf', { name: asset.name })}
+                />
+                <button type="button" onClick={() => onRemoveTemp(asset.id)} aria-label={t('retirement.projection.removeTemp', { name: asset.name })} className="text-muted-foreground hover:text-rose-500 shrink-0">
+                  <Trash2 size={14} />
+                </button>
+              </>
+            ) : (
+              <span className="shrink-0 w-24 text-right tabular-nums text-xs text-muted-foreground">{money(asset.value)}</span>
+            )}
           </li>
         ))}
       </ul>
+      <div className="mt-3 rounded-lg border border-dashed border-border p-3">
+        <p className="text-xs font-medium text-muted-foreground mb-2">{t('retirement.projection.addTemp')}</p>
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 items-end">
+          <div className="space-y-1.5 col-span-2 lg:col-span-1">
+            <Label htmlFor={`${uid}-tn`} className="text-xs">{t('retirement.projection.label')}</Label>
+            <Input id={`${uid}-tn`} value={tempName} onChange={(e) => setTempName(e.target.value)} placeholder={t('retirement.projection.tempPlaceholder')} className="h-8" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-tv`} className="text-xs">{t('retirement.projection.tempValue', { currency })}</Label>
+            <Input id={`${uid}-tv`} type="number" min="0" step="any" value={tempValue} onChange={(e) => setTempValue(e.target.value)} className="h-8" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-tg`} className="text-xs">{t('retirement.projection.growthPerYear')} %</Label>
+            <Input id={`${uid}-tg`} type="number" step="any" value={tempGrowth} onChange={(e) => setTempGrowth(e.target.value)} className="h-8" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-ty`} className="text-xs">{t('retirement.projection.tempYield')}</Label>
+            <Input id={`${uid}-ty`} type="number" min="0" step="any" value={tempYield} onChange={(e) => setTempYield(e.target.value)} className="h-8" />
+          </div>
+          <Button type="button" size="sm" onClick={addTemp} disabled={!(parseFloat(tempValue) > 0)} className="h-8">
+            <Plus size={14} /> {t('retirement.projection.addAsset')}
+          </Button>
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-2">{t('retirement.projection.tempHint')}</p>
+      </div>
     </div>
   )
 }

@@ -30,6 +30,8 @@ export interface ProjectionAsset {
   growthPercent?: number
   /** When selling in order: lower sells first; unset sells last. */
   sellOrder?: number
+  /** A what-if asset that exists only in the plan (display only; the engine treats it like any other). */
+  temporary?: boolean
 }
 
 export interface Assumptions {
