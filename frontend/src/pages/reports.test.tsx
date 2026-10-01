@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
     netWorth: vi.fn(),
     incomeExpenses: vi.fn(),
     cashFlow: vi.fn(),
+    monthlyReview: vi.fn(),
   },
 }))
 
@@ -55,7 +56,7 @@ afterEach(() => vi.useRealTimers())
 
 describe('Reports page — Custom range segment', () => {
   it('loads the Net Worth tab with the 1Y preset by default', async () => {
-    renderWithProviders(<ReportsPage />)
+    renderWithProviders(<ReportsPage />, { route: '/reports?tab=net_worth' })
 
     await waitFor(() => expect(api.reports.netWorth).toHaveBeenCalled())
     const [, , , , , startDate, endDate] = api.reports.netWorth.mock.calls[0]
@@ -64,7 +65,7 @@ describe('Reports page — Custom range segment', () => {
   })
 
   it('opening Custom waits for Apply before querying January 1 through today', async () => {
-    const { user } = renderWithProviders(<ReportsPage />)
+    const { user } = renderWithProviders(<ReportsPage />, { route: '/reports?tab=net_worth' })
     await waitFor(() => expect(api.reports.netWorth).toHaveBeenCalledTimes(1))
 
     await user.click(screen.getByRole('button', { name: t('reports.customRange') }))
@@ -93,7 +94,7 @@ describe('Reports page — Custom range segment', () => {
   })
 
   it('is not offered on the Cash Flow tab', async () => {
-    const { user } = renderWithProviders(<ReportsPage />)
+    const { user } = renderWithProviders(<ReportsPage />, { route: '/reports?tab=net_worth' })
     await waitFor(() => expect(api.reports.netWorth).toHaveBeenCalled())
 
     await user.click(screen.getByRole('button', { name: t('reports.cashFlow') }))
@@ -106,7 +107,7 @@ describe('Reports page — Custom range segment', () => {
 
 it.each(['Cancel', 'Escape', 'outside'] as const)(
   '6M → Custom → %s leaves the preset and query unchanged', async (dismiss) => {
-    const { user } = renderWithProviders(<ReportsPage />)
+    const { user } = renderWithProviders(<ReportsPage />, { route: '/reports?tab=net_worth' })
     await waitFor(() => expect(api.reports.netWorth).toHaveBeenCalledTimes(1))
     const preset = screen.getByRole('button', { name: t('reports.range6m') })
     await user.click(preset)
@@ -134,7 +135,7 @@ it.each([
   ['reports.incomeExpenses', 'reports.range1y', 12],
   ['reports.moneyMap', 'reports.range3m', 3],
 ] as const)('Reset then Apply restores the fallback for %s', async (tab, fallback, months) => {
-  const { user } = renderWithProviders(<ReportsPage />)
+  const { user } = renderWithProviders(<ReportsPage />, { route: '/reports?tab=net_worth' })
   if (tab !== 'reports.netWorth') {
     await user.click(screen.getByRole('button', { name: t(tab) }))
   }
@@ -157,7 +158,7 @@ it.each([
 })
 
 it('preserves saved custom dates across supported tabs and preset dismissal', async () => {
-  const { user } = renderWithProviders(<ReportsPage />)
+  const { user } = renderWithProviders(<ReportsPage />, { route: '/reports?tab=net_worth' })
   const custom = screen.getByRole('button', { name: t('reports.customRange') })
   await user.click(custom)
   await user.click(screen.getByRole('button', { name: t('transactions.filtersBar.apply') }))
@@ -193,7 +194,7 @@ it('preserves saved custom dates across supported tabs and preset dismissal', as
 
 describe('Reports page — query failure', () => {
   it('surfaces a rejected custom range instead of showing stale numbers', async () => {
-    const { user } = renderWithProviders(<ReportsPage />)
+    const { user } = renderWithProviders(<ReportsPage />, { route: '/reports?tab=net_worth' })
     await waitFor(() => expect(api.reports.netWorth).toHaveBeenCalledTimes(1))
 
     api.reports.netWorth.mockRejectedValueOnce({
@@ -210,7 +211,7 @@ describe('Reports page — query failure', () => {
   })
 
   it('shows a generic fallback for a network failure and recovers via Retry', async () => {
-    const { user } = renderWithProviders(<ReportsPage />)
+    const { user } = renderWithProviders(<ReportsPage />, { route: '/reports?tab=net_worth' })
     await waitFor(() => expect(api.reports.netWorth).toHaveBeenCalledTimes(1))
 
     api.reports.netWorth.mockRejectedValueOnce(new Error('network error'))
@@ -225,7 +226,7 @@ describe('Reports page — query failure', () => {
   })
 
   it('recovers by changing the range after a rejected selection', async () => {
-    const { user } = renderWithProviders(<ReportsPage />)
+    const { user } = renderWithProviders(<ReportsPage />, { route: '/reports?tab=net_worth' })
     await waitFor(() => expect(api.reports.netWorth).toHaveBeenCalledTimes(1))
 
     api.reports.netWorth.mockRejectedValueOnce({ response: { data: { detail: 'end_date must be on or before today' } } })
@@ -236,5 +237,28 @@ describe('Reports page — query failure', () => {
     await user.click(screen.getByRole('button', { name: t('reports.range6m') }))
     await waitFor(() => expect(screen.queryByText('end_date must be on or before today')).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: t('reports.range6m') })).toHaveClass('bg-primary')
+  })
+})
+
+
+describe('the Review tab', () => {
+  it('is the page a visitor lands on, and does not request a chart report', async () => {
+    api.reports.monthlyReview.mockResolvedValue({
+      month: '2026-09-01', currency: 'USD', this_month: { income: 100, expenses: 40, saved: 60, savings_rate: 0.6 },
+      previous_month: null, usual: null, usual_months: 0, categories: [], movers_up: [], movers_down: [], new_merchants: [],
+      large_transactions: [], recurring_expenses: 0, other_expenses: 40, uncategorized_expenses: 0, uncategorized_share: 0,
+      moved_between_accounts: 0, moved_count: 0, year: [],
+    })
+    renderWithProviders(<ReportsPage />)
+    expect(await screen.findByText(/You spent/)).toBeInTheDocument()
+    expect(api.reports.netWorth).not.toHaveBeenCalled()
+    expect(api.reports.incomeExpenses).not.toHaveBeenCalled()
+  })
+
+  it('lets the address choose another tab', async () => {
+    api.reports.netWorth.mockResolvedValue(emptyReport('net_worth'))
+    renderWithProviders(<ReportsPage />, { route: '/reports?tab=net_worth' })
+    await waitFor(() => expect(api.reports.netWorth).toHaveBeenCalled())
+    expect(api.reports.monthlyReview).not.toHaveBeenCalled()
   })
 })

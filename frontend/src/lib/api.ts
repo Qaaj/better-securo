@@ -46,6 +46,7 @@ import type {
   RecurringTransaction,
   RecurringSuggestion,
   CategorizerSettings,
+  MonthlyReview,
   CategorizationJob,
   CategorizationSuggestion,
   CategorizationSuggestionTransaction,
@@ -1345,6 +1346,10 @@ export const collections = {
 
 // Reports
 export const reports = {
+  monthlyReview: async (month?: string): Promise<MonthlyReview> => {
+    const { data } = await api.get('/reports/monthly-review', { params: month ? { month } : {} })
+    return data
+  },
   netWorth: async (
     months = 12,
     interval = 'monthly',

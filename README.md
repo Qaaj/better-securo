@@ -71,8 +71,21 @@ Drop a Revolut, Millennium BCP or Belfius CSV on the Import page and it is recog
 - An export holding several currencies or accounts (a multi-currency Revolut file) gets a picker; each one is imported to the account you choose.
 - The bank's own transaction numbers become the transactions' external IDs, so importing the same file twice skips every row.
 - Conversion notes (folded fees, a debit/credit sign mismatch) are shown above the preview.
+- **Transfers between your own accounts are paired automatically** after an import, so a move from one account to another stops counting as both spending and income (a pair needs both legs to be each other's single best match). *Import → Find transfers* runs the same pairing over everything already imported.
 
 Other CSVs go through the usual column mapping. The converters live in `backend/app/services/bank_converters/` and are plain Python with no extra dependencies.
+
+### Monthly review
+
+**Reports → Monthly review** is the first tab, and answers the questions you actually have, in words:
+
+- **How did the month go?** Income, spending and what you saved, written as sentences against your own *usual* month (the average of the previous twelve months with data).
+- **Where did the money go?** Your categories as bars, each with its usual amount and whether it is up or down, linking to the transactions behind it. A warning appears when much of the spending is not categorized yet.
+- **What changed?** The categories you spent more and less on, new merchants and the biggest purchases.
+- **Fixed or flexible?** Spending linked to your recurring items against everything else.
+- **Your year so far:** a month-by-month table of income, spending and saved.
+
+It uses the same rules as the dashboard for what counts as income and spending, and says how much moved between your own accounts and was left out. The original charts (Net Worth, Income vs Expenses, Cash Flow, Money Map) are still there on the other tabs, and `?tab=net_worth` in the address opens one directly.
 
 ### Recurring transactions
 

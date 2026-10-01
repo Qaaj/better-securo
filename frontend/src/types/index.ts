@@ -1693,3 +1693,56 @@ export interface ReconciliationHistoryEvent {
   transaction_id?: string | null
   transaction_description?: string | null
 }
+
+export interface ReviewMonthFigures {
+  income: number
+  expenses: number
+  saved: number
+  savings_rate: number | null
+}
+
+export interface ReviewCategoryLine {
+  category_id: string | null
+  name: string | null
+  icon: string | null
+  color: string | null
+  amount: number
+  usual: number
+  delta: number
+  share: number
+}
+
+export interface ReviewMerchantLine {
+  name: string
+  amount: number
+  count: number
+}
+
+export interface ReviewLargeTransaction {
+  id: string
+  date: string
+  description: string
+  amount: number
+  category_name: string | null
+}
+
+export interface MonthlyReview {
+  month: string
+  currency: string
+  this_month: ReviewMonthFigures
+  previous_month: ReviewMonthFigures | null
+  usual: ReviewMonthFigures | null
+  usual_months: number
+  categories: ReviewCategoryLine[]
+  movers_up: ReviewCategoryLine[]
+  movers_down: ReviewCategoryLine[]
+  new_merchants: ReviewMerchantLine[]
+  large_transactions: ReviewLargeTransaction[]
+  recurring_expenses: number
+  other_expenses: number
+  uncategorized_expenses: number
+  uncategorized_share: number
+  moved_between_accounts: number
+  moved_count: number
+  year: { month: string; income: number; expenses: number; saved: number }[]
+}
