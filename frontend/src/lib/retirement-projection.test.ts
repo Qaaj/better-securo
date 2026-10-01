@@ -265,3 +265,41 @@ describe('assets that arrive later', () => {
     expect(withLater.runwayYears).toBeCloseTo(4)
   })
 })
+
+describe('what inflation applies to', () => {
+  const costs = { assets: [pool(1_000_000)], assumptions: { inflationPercent: 10, horizonYears: 3 } }
+
+  it('keeps a flat outgoing the same while the rest rises', () => {
+    const p = run({ ...costs, outgoingMonthly: 1_000, outgoingFlatMonthly: 500 })
+    expect(p.rows[0].outgoing).toBeCloseTo(12_000 + 6_000)
+    expect(p.rows[2].outgoing).toBeCloseTo(12_000 * 1.21 + 6_000)
+  })
+
+  it('keeps a flat income the same, and a flat rental', () => {
+    const p = run({
+      assets: [pool(0), { id: 'r', name: 'rent', value: 100, drawable: false, fixedMonthly: 1_000, fixedFlat: true }],
+      recurringIncomeFlatMonthly: 500, recurringIncomeMonthly: 200,
+      assumptions: { inflationPercent: 10, horizonYears: 3, incomeIndexed: true },
+    })
+    expect(p.rows[2].income).toBeCloseTo(200 * 12 * 1.21 + 500 * 12 + 1_000 * 12)
+    const indexed = run({
+      assets: [pool(0), { id: 'r', name: 'rent', value: 100, drawable: false, fixedMonthly: 1_000 }],
+      assumptions: { inflationPercent: 10, horizonYears: 3, incomeIndexed: true },
+    })
+    expect(indexed.rows[2].income).toBeCloseTo(1_000 * 12 * 1.21)
+  })
+
+  it('lengthens the runway when the biggest cost is fixed', () => {
+    const inflating = run({ assets: [pool(300_000)], outgoingMonthly: 1_000, assumptions: { inflationPercent: 4, horizonYears: 60 } })
+    const fixed = run({ assets: [pool(300_000)], outgoingFlatMonthly: 1_000, assumptions: { inflationPercent: 4, horizonYears: 60 } })
+    expect(fixed.runwayYears!).toBeGreaterThan(inflating.runwayYears!)
+  })
+
+  it('a fixed spend replaces both kinds of outgoing', () => {
+    const p = run({
+      ...costs, outgoingMonthly: 1_000, outgoingFlatMonthly: 500,
+      whatIfs: [{ id: 's', kind: 'spend', label: 'x', monthly: 2_000, fromYear: 1 }],
+    })
+    expect(p.rows[1].outgoing).toBeCloseTo(2_000 * 12 * 1.1)
+  })
+})

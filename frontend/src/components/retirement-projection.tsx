@@ -2,7 +2,7 @@ import { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Plus, Save, Trash2 } from 'lucide-react'
-import { annualGrowthPercent, assetFixedMonthly, assetValue, computeRetirement } from '@/lib/retirement'
+import { annualGrowthPercent, assetFixedMonthly, assetValue, computeRetirement, type IncomeLine, type OutgoingLine } from '@/lib/retirement'
 import {
   defaultDrawable,
   projectRetirement,
@@ -17,6 +17,7 @@ import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Asset, RecurringTransaction } from '@/types'
 
 /** An asset that exists only in the plan, e.g. "more bonds". */
@@ -31,6 +32,8 @@ interface TempAsset {
 }
 
 interface Plan {
+  /** Lines whose amount stays the same instead of rising with inflation (recurring item ids, `asset:<id>:income`). */
+  flat: string[]
   assumptions: Assumptions
   drawable: Record<string, boolean>
   /** Growth a year the user typed for an asset, over the one its own rule gives. */
@@ -43,6 +46,7 @@ interface Plan {
 }
 
 const DEFAULT_PLAN: Plan = {
+  flat: [],
   assumptions: { horizonYears: 30, inflationPercent: 2, incomeIndexed: true, drawdownStartYear: 0, sellStrategy: 'pro_rata' },
   drawable: {},
   growth: {},
@@ -110,9 +114,14 @@ export function RetirementProjection({
 
   // What the page already counts feeds the projection, so its switches apply here too.
   const summary = useMemo(() => computeRetirement(items, assets, currency, excluded), [items, assets, currency, excluded])
-  const recurringIncomeMonthly = summary.income
-    .filter((l) => l.kind === 'recurring' && !excluded.has(l.id))
-    .reduce((sum, l) => sum + l.monthly, 0)
+  const flatSet = useMemo(() => new Set(plan.flat ?? []), [plan.flat])
+  const sum = (lines: { monthly: number }[]) => lines.reduce((total, l) => total + l.monthly, 0)
+  const recurringIncome = summary.income.filter((l) => l.kind === 'recurring' && !excluded.has(l.id))
+  const recurringIncomeMonthly = sum(recurringIncome.filter((l) => !flatSet.has(l.id)))
+  const recurringIncomeFlatMonthly = sum(recurringIncome.filter((l) => flatSet.has(l.id)))
+  const countedOutgoing = summary.outgoing.filter((l) => !excluded.has(l.item.id))
+  const outgoingMonthly = sum(countedOutgoing.filter((l) => !flatSet.has(l.item.id)))
+  const outgoingFlatMonthly = sum(countedOutgoing.filter((l) => flatSet.has(l.item.id)))
 
   const projectionAssets: ProjectionAsset[] = useMemo(() => {
     const list: ProjectionAsset[] = []
@@ -131,6 +140,7 @@ export function RetirementProjection({
         sellOrder: plan.sellOrder[asset.id],
         yieldPercent: yielding ? asset.income_rate ?? undefined : undefined,
         fixedMonthly: rental ?? undefined,
+        fixedFlat: flatSet.has(`asset:${asset.id}:income`) || undefined,
         sellPercent: asset.sell_percent_per_year && !excluded.has(`asset:${asset.id}:sale`) ? asset.sell_percent_per_year : undefined,
       })
     }
@@ -148,11 +158,11 @@ export function RetirementProjection({
       })
     }
     return list
-  }, [assets, currency, excluded, plan.drawable, plan.growth, plan.sellOrder, plan.tempAssets])
+  }, [assets, currency, excluded, flatSet, plan.drawable, plan.growth, plan.sellOrder, plan.tempAssets])
 
-  const base = { recurringIncomeMonthly, outgoingMonthly: summary.outgoingMonthly, assets: projectionAssets, assumptions: plan.assumptions }
-  const baseline = useMemo(() => projectRetirement({ ...base, whatIfs: [] }), [base.recurringIncomeMonthly, base.outgoingMonthly, projectionAssets, plan.assumptions]) // eslint-disable-line react-hooks/exhaustive-deps
-  const scenario = useMemo(() => projectRetirement({ ...base, whatIfs: plan.whatIfs }), [base.recurringIncomeMonthly, base.outgoingMonthly, projectionAssets, plan.assumptions, plan.whatIfs]) // eslint-disable-line react-hooks/exhaustive-deps
+  const base = { recurringIncomeMonthly, recurringIncomeFlatMonthly, outgoingMonthly, outgoingFlatMonthly, assets: projectionAssets, assumptions: plan.assumptions }
+  const baseline = useMemo(() => projectRetirement({ ...base, whatIfs: [] }), [base.recurringIncomeMonthly, base.recurringIncomeFlatMonthly, base.outgoingMonthly, base.outgoingFlatMonthly, projectionAssets, plan.assumptions]) // eslint-disable-line react-hooks/exhaustive-deps
+  const scenario = useMemo(() => projectRetirement({ ...base, whatIfs: plan.whatIfs }), [base.recurringIncomeMonthly, base.recurringIncomeFlatMonthly, base.outgoingMonthly, base.outgoingFlatMonthly, projectionAssets, plan.assumptions, plan.whatIfs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const thisYear = new Date().getFullYear()
   const horizon = plan.assumptions.horizonYears
@@ -284,6 +294,19 @@ export function RetirementProjection({
         </div>
 
         <Assumptions plan={plan} setAssumption={setAssumption} thisYear={thisYear} />
+        <InflationLines
+          income={summary.income.filter((l) => !excluded.has(l.id) && (l.kind === 'recurring' || l.asset?.income_mode === 'fixed'))}
+          outgoing={summary.outgoing.filter((l) => !excluded.has(l.item.id))}
+          flat={flatSet}
+          incomeIndexed={plan.assumptions.incomeIndexed}
+          money={money}
+          onToggle={(id) => {
+            const next = new Set(flatSet)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            setPlan({ ...plan, flat: [...next] })
+          }}
+        />
         <SpendFrom
           assets={projectionAssets}
           money={money}
@@ -424,6 +447,78 @@ function Assumptions({ plan, setAssumption, thisYear }: { plan: Plan; setAssumpt
         <input type="checkbox" checked={a.incomeIndexed} onChange={(e) => setAssumption('incomeIndexed', e.target.checked)} className="size-4 accent-primary" />
         {t('retirement.projection.incomeIndexed')}
       </label>
+    </div>
+  )
+}
+
+/** Which lines rise with inflation. A fixed amount, like a mortgage payment or a
+ *  fixed rent, should stay the same, so it can be unticked. Saved with the plan. */
+function InflationLines({
+  income,
+  outgoing,
+  flat,
+  incomeIndexed,
+  money,
+  onToggle,
+}: {
+  income: IncomeLine[]
+  outgoing: OutgoingLine[]
+  flat: ReadonlySet<string>
+  incomeIndexed: boolean
+  money: (v: number) => string
+  onToggle: (id: string) => void
+}) {
+  const { t } = useTranslation()
+  const incomeRows = income.map((l) => ({ id: l.id, label: l.label, monthly: l.monthly }))
+  const costRows = outgoing.map((l) => ({ id: l.item.id, label: l.item.description, monthly: l.monthly }))
+
+  const list = (rows: { id: string; label: string; monthly: number }[], disabled: boolean) => {
+    const rising = rows.filter((r) => !flat.has(r.id)).reduce((sum, r) => sum + r.monthly, 0)
+    const fixed = rows.filter((r) => flat.has(r.id)).reduce((sum, r) => sum + r.monthly, 0)
+    return (
+      <div>
+        <p className="text-xs text-muted-foreground mb-2">
+          {disabled
+            ? t('retirement.projection.incomeNotIndexed')
+            : t('retirement.projection.inflationTotals', { rising: money(rising), fixed: money(fixed) })}
+        </p>
+        <ul className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-1 max-h-72 overflow-y-auto pr-1">
+          {rows.map((row) => {
+            const rises = !disabled && !flat.has(row.id)
+            return (
+              <li key={row.id}>
+                <label className={cn('flex items-center gap-2 text-sm', disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer')}>
+                  <input
+                    type="checkbox"
+                    checked={rises}
+                    disabled={disabled}
+                    onChange={() => onToggle(row.id)}
+                    className="size-4 accent-primary shrink-0"
+                    aria-label={t('retirement.projection.inflationApplies', { name: row.label })}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{row.label}</span>
+                  <span className="shrink-0 tabular-nums text-xs text-muted-foreground">{money(row.monthly)}</span>
+                </label>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <p className="text-xs font-medium text-muted-foreground mt-4">{t('retirement.projection.inflationTitle')}</p>
+      <p className="text-[11px] text-muted-foreground mb-2">{t('retirement.projection.inflationHint')}</p>
+      <Tabs defaultValue="costs">
+        <TabsList>
+          <TabsTrigger value="income">{t('retirement.projection.tabIncome')}</TabsTrigger>
+          <TabsTrigger value="costs">{t('retirement.projection.tabCosts')}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="income" className="mt-3">{list(incomeRows, !incomeIndexed)}</TabsContent>
+        <TabsContent value="costs" className="mt-3">{list(costRows, false)}</TabsContent>
+      </Tabs>
     </div>
   )
 }

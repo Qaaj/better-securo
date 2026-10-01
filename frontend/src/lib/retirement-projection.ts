@@ -24,6 +24,8 @@ export interface ProjectionAsset {
   yieldPercent?: number
   /** Fixed income per month, in the display currency (a rental). */
   fixedMonthly?: number
+  /** The fixed income does not rise with inflation. */
+  fixedFlat?: boolean
   /** % of the holding sold each year. */
   sellPercent?: number
   /** The asset's own growth, % a year (0 when it has none). */
@@ -59,8 +61,12 @@ export type WhatIf =
 export interface ProjectionInput {
   /** Counted recurring income per month, today's money. */
   recurringIncomeMonthly: number
-  /** Counted outgoings per month, today's money. */
+  /** Counted outgoings per month, today's money; these rise with inflation. */
   outgoingMonthly: number
+  /** Outgoings per month that stay the same in nominal terms (a fixed mortgage payment). */
+  outgoingFlatMonthly?: number
+  /** Counted recurring income that stays the same in nominal terms (a fixed rent). */
+  recurringIncomeFlatMonthly?: number
   assets: ProjectionAsset[]
   assumptions: Assumptions
   whatIfs: WhatIf[]
@@ -136,12 +142,16 @@ export function projectRetirement(input: ProjectionInput): Projection {
     // Assets that only exist from a later year arrive at the start of that year.
     for (const h of holdings) if (!h.held && h.startYear === year) h.held = true
 
-    let income = input.recurringIncomeMonthly * 12 * incomeInflate
+    let income = input.recurringIncomeMonthly * 12 * incomeInflate + (input.recurringIncomeFlatMonthly ?? 0) * 12
     let outgoingMonthly = input.outgoingMonthly
+    let outgoingFlatMonthly = input.outgoingFlatMonthly ?? 0
     for (const w of input.whatIfs) {
-      if (w.kind === 'spend' && year >= w.fromYear) outgoingMonthly = w.monthly
+      if (w.kind === 'spend' && year >= w.fromYear) {
+        outgoingMonthly = w.monthly
+        outgoingFlatMonthly = 0
+      }
     }
-    let outgoing = outgoingMonthly * 12 * inflate
+    let outgoing = outgoingMonthly * 12 * inflate + outgoingFlatMonthly * 12
     let oneOffs = 0
     let assetIncome = 0
     let saleIncome = 0
@@ -163,7 +173,7 @@ export function projectRetirement(input: ProjectionInput): Projection {
     for (const h of holdings) {
       if (!h.held || h.value <= 0) continue
       if (h.yieldPercent) assetIncome += (h.value * h.yieldPercent) / 100
-      if (h.fixedMonthly) assetIncome += h.fixedMonthly * 12 * incomeInflate
+      if (h.fixedMonthly) assetIncome += h.fixedMonthly * 12 * (h.fixedFlat ? 1 : incomeInflate)
       if (h.sellPercent && h.drawable) {
         const sold = Math.min(h.value, (h.value * h.sellPercent) / 100)
         h.value -= sold

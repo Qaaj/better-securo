@@ -92,3 +92,32 @@ it('adds a temporary asset that only arrives from a later year', async () => {
   const stored = JSON.parse(window.localStorage.getItem('retirement:plan') ?? '{}')
   expect(stored.tempAssets[0]).toMatchObject({ name: 'Inheritance', value: 300000, fromYear: 4 })
 })
+
+it('keeps a cost fixed from the Costs tab: the runway lengthens and the choice is saved with the plan', async () => {
+  const { user } = renderWithProviders(<RetirementProjection {...props} />)
+  const runwayText = () => screen.getByText(/^\d+\.\d years \(until \d{4}\)$/).textContent ?? ''
+  const before = parseFloat(runwayText())
+
+  await user.click(screen.getByRole('tab', { name: 'Costs' }))
+  const box = screen.getByRole('checkbox', { name: 'Inflation applies to Rent' })
+  expect(box).toBeChecked()
+  await user.click(box)
+  expect(box).not.toBeChecked()
+
+  // Rent no longer rises with inflation, so the assets last longer.
+  expect(parseFloat(runwayText())).toBeGreaterThan(before)
+  expect(JSON.parse(window.localStorage.getItem('retirement:plan') ?? '{}').flat).toEqual(['rent'])
+  expect(screen.getByText(/Staying the same: .*2,000/)).toBeInTheDocument()
+})
+
+it('shows income lines under the Income tab, and disables them when income is not indexed', async () => {
+  const credit = { id: 'pension', description: 'Pension', amount: 1000, currency: 'EUR', type: 'credit', frequency: 'monthly', is_active: true, amount_primary: null } as unknown as RecurringTransaction
+  const { user } = renderWithProviders(<RetirementProjection {...props} items={[...items, credit]} />)
+  await user.click(screen.getByRole('tab', { name: 'Income' }))
+  const box = screen.getByRole('checkbox', { name: 'Inflation applies to Pension' })
+  expect(box).toBeEnabled()
+
+  await user.click(screen.getByRole('checkbox', { name: /Income rises with inflation too/ }))
+  expect(screen.getByRole('checkbox', { name: 'Inflation applies to Pension' })).toBeDisabled()
+  expect(screen.getByText(/Income does not rise with inflation/)).toBeInTheDocument()
+})
