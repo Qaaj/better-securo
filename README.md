@@ -80,6 +80,7 @@ Other CSVs go through the usual column mapping. The converters live in `backend/
 **Reports → Monthly review** is the first tab, and answers the questions you actually have, in words:
 
 - **How did the month go?** Income, spending and what you saved, written as sentences against your own *usual* month (the average of the previous twelve months with data).
+- **Worth a look.** Things you might miss, judged against your own history: a charge that appears twice within a few days (a possible double charge), a payment far above what you usually pay a merchant, and a price that was fixed every time and has changed (a subscription going up).
 - **Where did the money go?** Your categories as bars, each with its usual amount and whether it is up or down, linking to the transactions behind it. A warning appears when much of the spending is not categorized yet.
 - **What changed?** The categories you spent more and less on, new merchants and the biggest purchases.
 - **Fixed or flexible?** Spending linked to your recurring items against everything else.

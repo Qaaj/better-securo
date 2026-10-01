@@ -2126,7 +2126,13 @@
       "moved": "{{amount}} moved between your own accounts ({{count}} transfers) is not counted as income or spending.",
       "yearTitle": "{{year}} so far",
       "monthColumn": "Month",
-      "total": "Total"
+      "total": "Total",
+      "worthTitle": "Worth a look",
+      "worthHint": "Based on your own history. Ignore anything that is expected.",
+      "insightDuplicate": "{{description}} was charged {{count}} times for {{amount}} within a few days. A double charge?",
+      "insightUnusual": "{{description}}: {{amount}} is {{times}}× what you usually pay there ({{usual}}).",
+      "insightPriceUp": "{{description}} went up from {{previous}} to {{amount}} (+{{pct}}%).",
+      "insightPriceDown": "{{description}} went down from {{previous}} to {{amount}} (−{{pct}}%)."
     },
     "section": "Analysen",
     "netWorth": "Nettovermögen",

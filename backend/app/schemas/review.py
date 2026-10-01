@@ -1,6 +1,6 @@
 import uuid
 from datetime import date
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -44,6 +44,17 @@ class YearMonth(BaseModel):
     saved: float
 
 
+class Insight(BaseModel):
+    """Something in the month worth a second look."""
+
+    kind: Literal["duplicate", "unusual", "price_change"]
+    description: str
+    amount: float
+    previous: Optional[float] = None  # the usual amount, or the old price
+    count: int = 1
+    dates: list[date] = []
+
+
 class MonthlyReview(BaseModel):
     month: date
     currency: str
@@ -63,3 +74,4 @@ class MonthlyReview(BaseModel):
     moved_between_accounts: float
     moved_count: int
     year: list[YearMonth]
+    insights: list[Insight] = []
