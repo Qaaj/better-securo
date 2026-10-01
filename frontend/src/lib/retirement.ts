@@ -58,6 +58,15 @@ function conversionRate(asset: Asset, displayCurrency: string): number | null {
   return null
 }
 
+/** A fixed asset income (a rental) as a monthly amount in the display currency. */
+export function assetFixedMonthly(asset: Asset, displayCurrency: string): number | null {
+  if (asset.income_mode !== 'fixed' || asset.income_amount == null || !asset.income_frequency) return null
+  const rate = conversionRate(asset, displayCurrency)
+  const perYear = PER_YEAR[asset.income_frequency]
+  if (rate == null || perYear == null) return null
+  return (asset.income_amount * rate * perYear) / 12
+}
+
 function assetIncomeLines(asset: Asset, displayCurrency: string): { lines: IncomeLine[]; skipped: number } {
   const lines: IncomeLine[] = []
   let skipped = 0

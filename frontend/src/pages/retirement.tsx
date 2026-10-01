@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { PageHeader } from '@/components/page-header'
+import { RetirementProjection } from '@/components/retirement-projection'
 
 const EXCLUDED_KEY = 'retirement:excluded-income'
 
@@ -92,6 +93,8 @@ export default function RetirementPage() {
           tone={shortfall ? 'negative' : 'positive'}
         />
       </div>
+
+      <RetirementProjection items={items ?? []} assets={assetList ?? []} excluded={excluded} currency={currency} locale={locale} />
 
       {summary.skipped > 0 && (
         <p className="text-xs text-amber-700 mb-3">{t('retirement.skipped', { count: summary.skipped })}</p>
