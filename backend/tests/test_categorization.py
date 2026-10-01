@@ -516,3 +516,45 @@ async def test_rules_can_be_made_afterwards_for_merchants_accepted_without_one(
     # Running it again changes nothing.
     again = await client.post("/api/categorization/rules-for-accepted", headers=auth_headers)
     assert again.json() == {"considered": 2, "created": 0}
+
+
+# ------------------------------------------------------------------ ordering
+@pytest.mark.asyncio
+async def test_suggestions_are_listed_by_total_value_with_most_transactions_as_an_option(
+    client, auth_headers, session, test_user, test_workspace, test_account, test_categories
+):
+    # Many small purchases vs a few large ones: more transactions, far less money.
+    for n in range(5):
+        await _tx(session, test_user, test_workspace, test_account, f"Corner Shop {n}", amount="4.00")
+    for n in range(2):
+        await _tx(session, test_user, test_workspace, test_account, f"Contractor {n}", amount="900.00")
+    await _tx(session, test_user, test_workspace, test_account, "Pharmacy", amount="150.00")
+
+    job = await _job(session, test_user, test_workspace)
+    await svc.run_job(async_sessionmaker(session.bind, expire_on_commit=False), job.id, FakeClassifier({}))
+
+    by_value = (await client.get(f"/api/categorization/jobs/{job.id}/suggestions", headers=auth_headers)).json()
+    assert [s["merchant_key"] for s in by_value["items"]] == ["contractor", "pharmacy", "corner shop"]
+
+    explicit = (await client.get(f"/api/categorization/jobs/{job.id}/suggestions?sort=value", headers=auth_headers)).json()
+    assert explicit["items"] == by_value["items"]
+
+    by_count = (await client.get(f"/api/categorization/jobs/{job.id}/suggestions?sort=count", headers=auth_headers)).json()
+    assert [s["merchant_key"] for s in by_count["items"]] == ["corner shop", "contractor", "pharmacy"]
+
+    bad = await client.get(f"/api/categorization/jobs/{job.id}/suggestions?sort=nonsense", headers=auth_headers)
+    assert bad.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_the_biggest_merchants_are_asked_about_first(
+    session, test_user, test_workspace, test_account, test_categories
+):
+    await _tx(session, test_user, test_workspace, test_account, "Small Thing", amount="1.00")
+    await _tx(session, test_user, test_workspace, test_account, "Big Thing", amount="5000.00")
+    await _tx(session, test_user, test_workspace, test_account, "Middle Thing", amount="200.00")
+    job = await _job(session, test_user, test_workspace)
+    classifier = FakeClassifier({})
+    await svc.run_job(async_sessionmaker(session.bind, expire_on_commit=False), job.id, classifier)
+    asked = [i["merchant"] for i in classifier.calls[0][0]]
+    assert asked == ["big thing", "middle thing", "small thing"]
