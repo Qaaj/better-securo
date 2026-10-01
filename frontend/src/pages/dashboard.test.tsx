@@ -15,12 +15,9 @@ const api = vi.hoisted(() => ({
     projectedTransactions: vi.fn(),
   },
   transactions: { list: vi.fn(), calendar: vi.fn() },
-  budgets: { comparison: vi.fn() },
   categories: { list: vi.fn() },
   categoryGroups: { list: vi.fn() },
   accounts: { list: vi.fn() },
-  goals: { summary: vi.fn() },
-  groups: { list: vi.fn() },
   payees: { list: vi.fn() },
   rules: { create: vi.fn() },
 }))
@@ -101,7 +98,6 @@ const summary: DashboardSummary = {
   assets_value: {},
   assets_value_primary: 0,
   primary_currency: 'USD',
-  pending_shares_net: 0,
 }
 
 beforeEach(() => {
@@ -111,12 +107,9 @@ beforeEach(() => {
   api.dashboard.balanceHistory.mockResolvedValue({ current: [], previous: [] })
   api.dashboard.projectedTransactions.mockResolvedValue([])
   api.transactions.list.mockResolvedValue({ items: [], total: 0 })
-  api.budgets.comparison.mockResolvedValue([])
   api.categories.list.mockResolvedValue([])
   api.categoryGroups.list.mockResolvedValue([])
   api.accounts.list.mockResolvedValue(accounts)
-  api.goals.summary.mockResolvedValue([])
-  api.groups.list.mockResolvedValue([])
   api.payees.list.mockResolvedValue([])
 })
 

@@ -31,10 +31,6 @@ MUTATIONS = [
         "name": "Should not exist", "type": "checking", "currency": "BRL",
     }),
     ("category", "POST", "/api/categories", {"name": "Should not exist", "type": "expense"}),
-    ("budget", "POST", "/api/budgets", {
-        "category_id": None, "amount": 100, "period": "monthly",
-        "start_date": "2026-08-01",
-    }),
 ]
 
 
@@ -70,7 +66,7 @@ async def test_the_refusal_says_why(client: AsyncClient, viewer_auth_headers):
 async def test_a_viewer_can_still_read(client: AsyncClient, viewer_auth_headers):
     """The gate must refuse writes without turning into a lockout — otherwise
     a 403 on everything would pass the tests above for the wrong reason."""
-    for path in ("/api/transactions", "/api/accounts", "/api/categories", "/api/budgets"):
+    for path in ("/api/transactions", "/api/accounts", "/api/categories"):
         resp = await client.get(path, headers=viewer_auth_headers)
         assert resp.status_code == 200, f"a viewer could not read {path}: {resp.text}"
 

@@ -138,10 +138,10 @@ export default function CategoriesPage() {
       invalidateAll()
       setDeletingCategory(null)
       setTransferringCategory(null)
-      // A transfer rewrites transactions, budgets, recurring entries and
+      // A transfer rewrites transactions, recurring entries and
       // rules, so the screens built on them are all stale now.
       if (variables.transferToId) {
-        for (const key of ['transactions', 'budgets', 'recurring-transactions', 'rules']) {
+        for (const key of ['transactions', 'recurring-transactions', 'rules']) {
           queryClient.invalidateQueries({ queryKey: [key] })
         }
       }
@@ -169,7 +169,6 @@ export default function CategoriesPage() {
       })
       const isUsed =
         usage.transactions > 0
-        || usage.budgets > 0
         || usage.recurring_transactions > 0
         || usage.rules.length > 0
       if (!isUsed) {
@@ -596,7 +595,6 @@ export default function CategoriesPage() {
             <ul className="rounded-lg border border-border divide-y divide-border">
               {([
                 ['nav.transactions', transferringCategory?.usage.transactions ?? 0],
-                ['nav.budgets', transferringCategory?.usage.budgets ?? 0],
                 ['nav.recurring', transferringCategory?.usage.recurring_transactions ?? 0],
                 ['nav.rules', transferringCategory?.usage.rules.length ?? 0],
               ] as const)

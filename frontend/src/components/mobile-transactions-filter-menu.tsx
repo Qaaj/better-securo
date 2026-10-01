@@ -11,7 +11,6 @@ import {
   ListChecks,
   Store,
   Tag,
-  Users,
   Wallet,
   X,
 } from 'lucide-react'
@@ -25,14 +24,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { getAccountName } from '@/lib/account-utils'
 import { cn } from '@/lib/utils'
-import type { Account, Category, CategoryGroup, Group, Payee } from '@/types'
+import type { Account, Category, CategoryGroup, Payee } from '@/types'
 
 export type MobileFilterView =
   | 'root'
   | 'account'
   | 'category'
   | 'payee'
-  | 'group'
   | 'type'
   | 'status'
   | 'ignored'
@@ -54,12 +52,10 @@ interface MobileTransactionsFilterMenuProps {
   categories: Category[]
   categoryGroups: CategoryGroup[]
   payees: Payee[]
-  groups: Group[]
   accountIds: string[]
   categoryIds: string[]
   uncategorized: boolean
   payeeId: string
-  groupId: string
   type: string
   status: string
   hideIgnored: boolean
@@ -78,7 +74,6 @@ interface MobileTransactionsFilterMenuProps {
   onCategoryIdsChange: (value: string[]) => void
   onUncategorizedChange: (value: boolean) => void
   onPayeeChange: (value: string) => void
-  onGroupIdChange: (value: string) => void
   onTypeChange: (value: string) => void
   onStatusChange: (value: string) => void
   onHideIgnoredChange: (value: boolean) => void
@@ -439,7 +434,6 @@ function buildRootOptions(
     { view: 'account', icon: Wallet, label: labels.account, summary: summaries.account },
     { view: 'category', icon: Tag, label: labels.category, summary: summaries.category },
     { view: 'payee', icon: Store, label: labels.payee, summary: summaries.payee },
-    { view: 'group', icon: Users, label: labels.group, summary: summaries.group },
     { view: 'type', icon: ArrowUpDown, label: labels.type, summary: summaries.type },
     { view: 'status', icon: ListChecks, label: labels.status, summary: summaries.status },
     { view: 'ignored', icon: EyeClosed, label: labels.ignored, summary: summaries.ignored },
@@ -455,7 +449,6 @@ function buildLabels(
     account: t('transactions.account'),
     category: t('transactions.category'),
     payee: t('payees.payee'),
-    group: t('splitGroups.group'),
     type: t('transactions.type'),
     status: t('transactions.status'),
     ignored: t('transactions.ignoredRows'),
@@ -481,9 +474,6 @@ function MobileFilterDetail({
   }
   if (menu.view === 'payee') {
     return <MobileSelectionView options={[allOption, ...menu.payees.map(({ id, name }) => ({ value: id, label: name }))]} selectedValue={menu.payeeId} onChange={menu.onPayeeChange} />
-  }
-  if (menu.view === 'group') {
-    return <MobileSelectionView options={[allOption, ...menu.groups.map(({ id, name }) => ({ value: id, label: name }))]} selectedValue={menu.groupId} onChange={menu.onGroupIdChange} />
   }
   if (menu.view === 'type') {
     const options = [allOption, { value: 'credit', label: t('transactions.income') }, { value: 'debit', label: t('transactions.expense') }, { value: 'transfer', label: t('transactions.transfer') }]

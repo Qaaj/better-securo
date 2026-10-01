@@ -268,15 +268,23 @@ async def test_mcp_calls_use_the_workspace_calendar(session, test_user, test_wor
     test_workspace.timezone = "Asia/Tokyo"
     await session.commit()
 
-    with patch("app.core.app_clock.datetime", MonthBoundary):
-        result = await call_tool(
+    seen: list = []
+
+    async def _capture(_session, _ws, _user, month=None, **_kw):
+        seen.append(month)
+        return {}
+
+    with patch("app.core.app_clock.datetime", MonthBoundary), patch(
+        "mcp_server.tools.reports.dashboard_service.get_summary", _capture
+    ):
+        await call_tool(
             session,
             CallContext(user_id=test_user.id, workspace_id=test_workspace.id),
-            "get_budget_vs_actual",
+            "get_dashboard_snapshot",
             {},
         )
 
-    assert result["month"] == "2026-06-01"
+    assert seen[-1].isoformat() == "2026-06-01"
 
 
 @pytest.mark.asyncio
@@ -490,15 +498,23 @@ async def test_mcp_defaults_use_application_month(session, test_user, test_works
     session.add(AppSetting(key="timezone", value="America/Sao_Paulo"))
     await session.commit()
 
-    with patch("app.core.app_clock.datetime", MonthBoundary):
-        result = await call_tool(
+    seen: list = []
+
+    async def _capture(_session, _ws, _user, month=None, **_kw):
+        seen.append(month)
+        return {}
+
+    with patch("app.core.app_clock.datetime", MonthBoundary), patch(
+        "mcp_server.tools.reports.dashboard_service.get_summary", _capture
+    ):
+        await call_tool(
             session,
             CallContext(user_id=test_user.id, workspace_id=test_workspace.id),
-            "get_budget_vs_actual",
+            "get_dashboard_snapshot",
             {},
         )
 
-    assert result["month"] == "2026-05-01"
+    assert seen[-1].isoformat() == "2026-05-01"
 
 
 @pytest.mark.asyncio

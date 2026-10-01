@@ -51,12 +51,9 @@ class ModuleId(str, Enum):
     IMPORT = "import"
     REPORTS = "reports"
     ASSETS = "assets"
-    BUDGETS = "budgets"
-    GOALS = "goals"
     RECURRING = "recurring"
     CATEGORIES = "categories"
     PAYEES = "payees"
-    SPLIT_GROUPS = "split_groups"
     RULES = "rules"
     INVOICES = "invoices"
 
@@ -79,12 +76,9 @@ CATALOG: Mapping[ModuleId, ModuleSpec] = {
         ModuleSpec(ModuleId.IMPORT, default_enabled=True),
         ModuleSpec(ModuleId.REPORTS, default_enabled=True),
         ModuleSpec(ModuleId.ASSETS, default_enabled=True),
-        ModuleSpec(ModuleId.BUDGETS, default_enabled=True),
-        ModuleSpec(ModuleId.GOALS, default_enabled=True),
         ModuleSpec(ModuleId.RECURRING, default_enabled=True),
         ModuleSpec(ModuleId.CATEGORIES, default_enabled=True),
         ModuleSpec(ModuleId.PAYEES, default_enabled=True),
-        ModuleSpec(ModuleId.SPLIT_GROUPS, default_enabled=True),
         ModuleSpec(ModuleId.RULES, default_enabled=True),
         ModuleSpec(ModuleId.INVOICES, default_enabled=False),
     )

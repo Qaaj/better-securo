@@ -47,8 +47,7 @@ Open [http://localhost:3000](http://localhost:3000) and create an account. That'
 - Transaction management with search, filters, and CSV export
 - File import (OFX, QIF, CAMT, CSV)
 - Auto-categorization rules engine
-- Recurring transactions and budgets
-- Goals and savings targets with progress tracking
+- Recurring transactions
 - Asset management with valuation tracking and growth rules
 - Reports: Net Worth and Income vs Expenses with category sparklines
 - Bank sync via providers (Pluggy for Brazilian banks, Enable Banking for ~2500 European PSD2 banks, SimpleFIN for US and international banks, extensible)
@@ -182,7 +181,7 @@ Rates are fetched on-demand when foreign-currency transactions are created. With
 
 ## Timezone
 
-Balances, budgets, due dates and recurring transactions turn over at midnight in the application timezone. Set it once in Admin Settings → Date and time; a workspace that keeps its books somewhere else can pick its own timezone in Workspace settings. Without a saved value the application follows `TZ` from the environment, then the host timezone, then UTC, so an existing installation keeps behaving as before until someone changes it.
+Balances, due dates and recurring transactions turn over at midnight in the application timezone. Set it once in Admin Settings → Date and time; a workspace that keeps its books somewhere else can pick its own timezone in Workspace settings. Without a saved value the application follows `TZ` from the environment, then the host timezone, then UTC, so an existing installation keeps behaving as before until someone changes it.
 
 ## AI Agents (Optional)
 

@@ -32,7 +32,7 @@ async def create_mcp_token(ctx: WorkspaceContext = Depends(current_writable_work
 
     Write-gated because of what the token can do, not because minting
     writes a row. It carries (user, workspace) to the MCP server, whose
-    tool set includes `propose_create_transaction`, `propose_create_budget`
+    tool set includes `propose_create_transaction`
     and friends — all of which persist. Handing a read-only member a
     credential that writes would route around the gate the HTTP API
     enforces.

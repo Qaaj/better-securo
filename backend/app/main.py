@@ -7,9 +7,6 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.accounts import router as accounts_router
-from app.api.budgets import router as budgets_router
-from app.api.goals import router as goals_router
-from app.api.groups import router as groups_router
 from app.api.categories import router as categories_router
 from app.api.category_groups import router as category_groups_router
 from app.api.connections import router as connections_router
@@ -180,9 +177,6 @@ app.include_router(import_logs_router)
 app.include_router(accounts_router)
 app.include_router(connections_router)
 app.include_router(recurring_router)
-app.include_router(budgets_router)
-app.include_router(goals_router)
-app.include_router(groups_router)
 app.include_router(assets_router)
 app.include_router(asset_groups_router)
 app.include_router(collections_router)

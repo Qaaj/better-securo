@@ -70,7 +70,6 @@ async def category_usage(
     )
     return CategoryUsageRead(
         transactions=usage.transactions,
-        budgets=usage.budgets,
         recurring_transactions=usage.recurring_transactions,
         rules=[RuleSummary(id=r.id, name=r.name) for r in usage.rules],
     )
@@ -104,7 +103,7 @@ async def delete_category(
     category_id: uuid.UUID,
     transfer_to_category_id: Optional[uuid.UUID] = Query(
         None,
-        description="Category that takes over the transactions, budgets, "
+        description="Category that takes over the transactions, "
         "recurring entries and rules of the one being deleted.",
     ),
     ctx: WorkspaceContext = Depends(current_writable_workspace),

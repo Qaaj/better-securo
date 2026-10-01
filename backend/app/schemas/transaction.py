@@ -6,11 +6,6 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.category import CategoryRead
-from app.schemas.transaction_split import (
-    TransactionSplitInput,
-    TransactionSplitRead,
-    TransactionSplitsInput,
-)
 
 
 class TransactionBase(BaseModel):
@@ -33,7 +28,6 @@ class TransactionCreate(TransactionBase):
     amount_primary: Optional[Decimal] = None
     fx_rate_used: Optional[Decimal] = None
     effective_bill_date: Optional[_Date] = None
-    splits: Optional[TransactionSplitsInput] = None
     # Manual status override. When omitted the transaction is created as
     # "posted" (settled), matching the model default. Pass "pending"
     # (not yet settled) to record an entry that isn't settled yet. Only
@@ -109,9 +103,6 @@ class TransactionUpdate(BaseModel):
     # CC bucketing override (issue #92). Empty string / explicit null clears
     # it back to auto. Only meaningful for credit-card accounts.
     effective_bill_date: Optional[_Date] = None
-    # When provided, replaces the transaction's splits wholesale. Pass
-    # an object with an empty `splits` list to clear them.
-    splits: Optional[TransactionSplitsInput] = None
     # Installment-series scope for edits. "this" (default) only touches the
     # target row; "future" touches it plus all later installments of the
     # same series; "all" touches every row in the series. Ignored when the
@@ -187,18 +178,6 @@ class TransactionRead(TransactionBase):
     bill_id: Optional[uuid.UUID] = None
     effective_bill_date: Optional[_Date] = None
     recurring_transaction_id: Optional[uuid.UUID] = None
-    splits: list[TransactionSplitRead] = []
-    # Shared-transaction view fields. Set per-request when the viewer
-    # is a linked member of one of this transaction's splits but not
-    # its owner. The viewer sees their share amount instead of the
-    # parent's full amount, with a back-link to the originating group.
-    is_shared: bool = False
-    viewer_share: Optional[Decimal] = None
-    group_id: Optional[uuid.UUID] = None
-    # Display name of the parent's owner — derived from the group's
-    # is_self member at request time. Helps the UI show who paid
-    # instead of a generic "shared" badge.
-    parent_owner_name: Optional[str] = None
     is_ignored: bool = False
     exclude_from_pnl: bool = False
 
@@ -218,18 +197,6 @@ class BulkCategorizeRequest(BaseModel):
 
 class TransactionBulkDeleteRequest(BaseModel):
     transaction_ids: list[uuid.UUID]
-
-
-class BulkAddToGroupRequest(BaseModel):
-    transaction_ids: list[uuid.UUID]
-    group_id: uuid.UUID
-    # Bulk supports `equal` and `percent` only — `exact` amounts can't
-    # generalize across transactions of different totals.
-    share_type: Literal["equal", "percent"] = "equal"
-    # Subset of group members to include. Each entry's `share_pct` is
-    # required when share_type='percent' (and must sum to 100). For
-    # share_type='equal' only `group_member_id` is read.
-    member_splits: list[TransactionSplitInput] = Field(default_factory=list)
 
 
 class TransferCreate(BaseModel):

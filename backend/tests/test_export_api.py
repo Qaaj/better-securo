@@ -71,7 +71,6 @@ async def test_backup_with_data(
             "category_groups.json",
             "rules.json",
             "recurring_transactions.json",
-            "budgets.json",
             "assets.json",
             "asset_values.json",
             "import_logs.json",

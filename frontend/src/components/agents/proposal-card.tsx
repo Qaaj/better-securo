@@ -6,9 +6,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
-  budgets,
   categories,
-  goals,
   recurring,
   rules,
   transactions,
@@ -57,9 +55,7 @@ export function ProposalCard({ toolCallId, data }: Props) {
         'categories',
         'category-groups',
         'recurring-transactions',
-        'budgets',
         'rules',
-        'goals',
         'dashboard',
       ].forEach((key) => qc.invalidateQueries({ queryKey: [key] }))
     },
@@ -117,7 +113,6 @@ export function ProposalCard({ toolCallId, data }: Props) {
             </span>
           </div>
           <div className="mt-1 text-muted-foreground text-[13px] leading-snug">{summary}</div>
-          <SplitPreview proposed={data.proposed} />
         </div>
         <div className="shrink-0 flex items-center gap-1.5">
           {isApplied ? (
@@ -174,12 +169,6 @@ function renderSummary(kind: ProposalKind, d: ProposalData, t: ReturnType<typeof
       return t('agents.proposal.summary.createCategory', {
         name: String(p.name ?? '?'),
       }) + (d.name_collision ? ` — ${t('agents.proposal.collision', { name: d.name_collision.name })}` : '')
-    case 'create_budget':
-      return t('agents.proposal.summary.createBudget', {
-        category: String((p.category_name as string) ?? p.category_id ?? '?'),
-        amount: fmt(p.amount, p.currency),
-        month: String(p.month ?? '?'),
-      })
     case 'create_payee_rule':
       return t('agents.proposal.summary.createPayeeRule', {
         pattern: String(p.match_pattern ?? '?'),
@@ -224,12 +213,6 @@ function renderSummary(kind: ProposalKind, d: ProposalData, t: ReturnType<typeof
       return t(d.mode === 'delete' ? 'agents.proposal.summary.deleteRecurring' : 'agents.proposal.summary.deactivateRecurring', {
         description: String(tgt.description ?? '?'),
       })
-    case 'create_goal':
-      return t('agents.proposal.summary.createGoal', {
-        name: String(p.name ?? '?'),
-        target: fmt(p.target_amount, p.currency),
-        deadline: p.deadline ? String(p.deadline) : '—',
-      })
     default:
       return ''
   }
@@ -254,33 +237,6 @@ function safeStringify(o: unknown): string {
   }
 }
 
-function SplitPreview({ proposed }: { proposed?: Record<string, unknown> }) {
-  const p = proposed || {}
-  const splits = p.splits as { share_type?: string; items?: Array<Record<string, unknown>> } | undefined
-  if (!splits || !Array.isArray(splits.items) || splits.items.length === 0) return null
-  const groupName = (p.group_name as string) || ''
-  const currency = typeof p.currency === 'string' ? p.currency : 'BRL'
-  const shareType = splits.share_type || 'equal'
-  return (
-    <div className="mt-1.5 text-[12px] border rounded px-2 py-1.5 bg-background/40">
-      <div className="text-muted-foreground mb-1">
-        {groupName ? `${groupName} · ` : ''}{shareType}
-      </div>
-      <ul className="space-y-0.5">
-        {splits.items.map((s, i) => (
-          <li key={i} className="flex justify-between gap-3">
-            <span>{String(s.member_name ?? s.member_id ?? '?')}</span>
-            <span className="tabular-nums">
-              {fmt(s.share_amount, currency)}
-              {s.share_pct != null ? ` (${Number(s.share_pct)}%)` : ''}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
 // Each kind maps to one Securo endpoint already exposed via lib/api.ts.
 // Returns a string ref (id of the new entity) when available — used as a
 // breadcrumb in the localStorage record so a future "view created entity"
@@ -301,14 +257,6 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
         color: (p.color as string) || undefined,
       })
       return c.id
-    }
-    case 'create_budget': {
-      const b = await budgets.create({
-        category_id: String(p.category_id),
-        amount: Number(p.amount),
-        month: String(p.month),
-      })
-      return b.id
     }
     case 'create_payee_rule': {
       const r = await rules.create({
@@ -338,23 +286,6 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
       return id
     }
     case 'create_transaction': {
-      // If the proposal includes group splits, translate the agent's
-      // {member_id, share_amount, share_pct} preview into the API's
-      // {group_member_id, share_amount, share_pct} schema. The backend
-      // service re-runs the math in `equal` mode so passing the per-
-      // member amounts back is not required, but we keep them so an
-      // exact/percent split round-trips identically to the preview.
-      const splitsBlock = p.splits as { share_type?: string; items?: Array<Record<string, unknown>> } | undefined
-      const splitsPayload = splitsBlock && Array.isArray(splitsBlock.items) && splitsBlock.items.length > 0
-        ? {
-            share_type: String(splitsBlock.share_type || 'equal'),
-            splits: splitsBlock.items.map((it) => ({
-              group_member_id: String(it.member_id),
-              ...(it.share_amount != null ? { share_amount: Number(it.share_amount) } : {}),
-              ...(it.share_pct != null ? { share_pct: Number(it.share_pct) } : {}),
-            })),
-          }
-        : undefined
       const t = await transactions.create({
         description: String(p.description),
         amount: Number(p.amount),
@@ -364,7 +295,6 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
         account_id: (p.account_id as string) || undefined,
         category_id: (p.category_id as string) || undefined,
         notes: (p.notes as string) || undefined,
-        ...(splitsPayload ? { splits: splitsPayload } : {}),
       } as Parameters<typeof transactions.create>[0])
       return t.id
     }
@@ -396,18 +326,6 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
         await recurring.update(id, { is_active: false } as Parameters<typeof recurring.update>[1])
       }
       return id
-    }
-    case 'create_goal': {
-      const g = await goals.create({
-        name: String(p.name),
-        target_amount: Number(p.target_amount),
-        currency: (p.currency as string) || undefined,
-        deadline: (p.deadline as string) || undefined,
-        initial_amount: (p.initial_amount as number) ?? undefined,
-        icon: (p.icon as string) || undefined,
-        color: (p.color as string) || undefined,
-      } as Parameters<typeof goals.create>[0])
-      return g.id
     }
   }
 }

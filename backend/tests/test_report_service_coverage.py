@@ -565,53 +565,6 @@ async def test_baseline_projection_with_history(session, test_user, test_workspa
 # ---------------------------------------------------------------------------
 
 
-async def test_income_expenses_owner_split_offset(session, test_user, test_workspace):
-    """A split debit owned by the user has the non-owner share subtracted from
-    expenses (owner_offset + per-category offset branches)."""
-    from app.models.group import Group, GroupMember
-    from app.models.transaction_split import TransactionSplit
-
-    cat = await _make_category(session, test_user.id, "Dinner", color="#abc")
-    acct = await _make_account(session, test_user.id, "IE Split")
-    today = date.today()
-
-    group = Group(
-        id=uuid.uuid4(), user_id=test_user.id, name="Trip",
-        kind="shared", default_currency="BRL",
-    )
-    session.add(group)
-    await session.flush()
-    # The owner's own self-member, and a friend (non-owner) member.
-    self_member = GroupMember(
-        id=uuid.uuid4(), group_id=group.id, name="Me",
-        linked_user_id=test_user.id, is_self=True,
-    )
-    friend = GroupMember(
-        id=uuid.uuid4(), group_id=group.id, name="Friend", is_self=False,
-    )
-    session.add_all([self_member, friend])
-    await session.flush()
-
-    # User pays a 1000 dinner; friend owes 400 of it.
-    txn = await _add_txn(session, test_user.id, acct.id, 1000, "debit", today, category_id=cat.id)
-    session.add(TransactionSplit(
-        id=uuid.uuid4(), transaction_id=txn.id, group_member_id=friend.id,
-        share_amount=Decimal("400"), share_type="amount",
-    ))
-    await session.commit()
-
-    report = await get_income_expenses_report(
-        session, test_workspace.id, test_user.id, months=2, interval="monthly"
-    )
-    bd = {b.key: b.value for b in report.summary.breakdowns}
-    # Owner's share of the dinner is 1000 - 400 = 600.
-    assert bd["expenses"] == pytest.approx(600.0)
-
-    dinner = next((c for c in report.composition if c.label == "Dinner"), None)
-    assert dinner is not None
-    assert dinner.value == pytest.approx(600.0)
-
-
 async def test_income_expenses_trend_points_have_per_period_composition(session, test_user, test_workspace):
     """Each income/expenses trend DataPoint carries per-period composition items."""
     cat_wages = await _make_category(session, test_user.id, "Wages", color="#0E0")

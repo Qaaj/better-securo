@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
 from app.models.category import Category
-from app.models.group import Group, GroupMember
 from app.models.transaction import Transaction
 from app.services.workspace_service import create_workspace
 
@@ -575,57 +574,6 @@ async def test_bulk_add_and_remove_tags(client: AsyncClient, auth_headers, test_
     )
     assert remove.status_code == 200
     assert remove.json()["updated"] == 2
-
-
-@pytest.mark.asyncio
-async def test_bulk_add_to_group_bad_group_400(client: AsyncClient, auth_headers, test_transactions):
-    ids = [str(t.id) for t in test_transactions[:1]]
-    resp = await client.patch(
-        "/api/transactions/bulk-add-to-group", headers=auth_headers,
-        json={"transaction_ids": ids, "group_id": NONEXISTENT, "share_type": "equal"},
-    )
-    assert resp.status_code == 400
-
-
-@pytest.mark.asyncio
-async def test_bulk_add_to_group_rejects_group_from_other_workspace(
-    client: AsyncClient, auth_headers, session: AsyncSession, test_user, test_transactions
-):
-    other_ws = await create_workspace(
-        session,
-        name="Other",
-        creator=test_user,
-        self_membership=True,
-        seed_defaults=False,
-    )
-    group = Group(
-        id=uuid.uuid4(),
-        user_id=test_user.id,
-        workspace_id=other_ws.id,
-        name="Other group",
-        default_currency="BRL",
-    )
-    member = GroupMember(
-        id=uuid.uuid4(),
-        group_id=group.id,
-        workspace_id=other_ws.id,
-        name="Me",
-        linked_user_id=test_user.id,
-        is_self=True,
-    )
-    session.add_all([group, member])
-    await session.commit()
-
-    resp = await client.patch(
-        "/api/transactions/bulk-add-to-group", headers=auth_headers,
-        json={
-            "transaction_ids": [str(test_transactions[0].id)],
-            "group_id": str(group.id),
-            "share_type": "equal",
-        },
-    )
-    assert resp.status_code == 400
-    assert resp.json()["detail"] == "Group not found"
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,6 @@
 export type ProposalKind =
   | 'categorize'
   | 'create_category'
-  | 'create_budget'
   | 'create_payee_rule'
   | 'create_rule'
   | 'update_rule'
@@ -10,7 +9,6 @@ export type ProposalKind =
   | 'create_recurring_transaction'
   | 'update_recurring_transaction'
   | 'cancel_recurring_transaction'
-  | 'create_goal'
 
 export interface ProposalData {
   kind?: ProposalKind
@@ -31,11 +29,10 @@ export function isProposalData(data: unknown): data is ProposalData {
   if (!data || typeof data !== 'object') return false
   const k = (data as { kind?: unknown }).kind
   return typeof k === 'string' && [
-    'categorize', 'create_category', 'create_budget', 'create_payee_rule',
+    'categorize', 'create_category', 'create_payee_rule',
     'create_rule', 'update_rule', 'delete_rule',
     'create_transaction', 'create_recurring_transaction',
     'update_recurring_transaction', 'cancel_recurring_transaction',
-    'create_goal',
   ].includes(k)
 }
 

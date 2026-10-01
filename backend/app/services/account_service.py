@@ -586,7 +586,6 @@ async def delete_account(session: AsyncSession, account_id: uuid.UUID, workspace
     from app.services.attachment_service import cleanup_attachment_files
     from app.models.import_log import ImportLog
     from app.models.recurring_transaction import RecurringTransaction
-    from app.models.goal import Goal
     tx_result = await session.execute(
         select(Transaction.id).where(Transaction.account_id == account_id)
     )
@@ -615,11 +614,6 @@ async def delete_account(session: AsyncSession, account_id: uuid.UUID, workspace
         delete(RecurringTransaction).where(
             RecurringTransaction.account_id == account_id
         )
-    )
-    await session.execute(
-        update(Goal)
-        .where(Goal.account_id == account_id)
-        .values(account_id=None)
     )
 
     await session.delete(account)

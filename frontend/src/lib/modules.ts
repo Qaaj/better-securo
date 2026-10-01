@@ -12,12 +12,9 @@ export const MODULE_IDS = [
   'import',
   'reports',
   'assets',
-  'budgets',
-  'goals',
   'recurring',
   'categories',
   'payees',
-  'split_groups',
   'rules',
   'invoices',
 ] as const

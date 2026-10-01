@@ -18,12 +18,9 @@ const PERSONAL_MODULES: ModuleId[] = [
   'import',
   'reports',
   'assets',
-  'budgets',
-  'goals',
   'recurring',
   'categories',
   'payees',
-  'split_groups',
   'rules',
 ]
 
@@ -58,12 +55,9 @@ describe('visibleNavItems', () => {
       'import',
       'reports',
       'assets',
-      'budgets',
-      'goals',
       'recurring',
       'categories',
       'payees',
-      'splitGroups',
       'rules',
     ])
     // All three section headers survive.

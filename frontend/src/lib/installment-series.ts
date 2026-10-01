@@ -2,7 +2,6 @@ import type {
   InstallmentSeriesInput,
   Transaction,
   TransactionEditPayload,
-  TransactionSplitsInput,
 } from '../types'
 
 /**
@@ -21,7 +20,6 @@ export interface InstallmentSeriesFormInput {
   currency?: string
   notes: string
   fxFields: Pick<Partial<Transaction>, 'amount_primary' | 'fx_rate_used'>
-  splits: TransactionSplitsInput | null
   installmentCount: string
   installmentFrequency: 'monthly' | 'quarterly' | 'semiannual' | 'weekly' | 'biweekly' | 'yearly'
   status: 'posted' | 'pending'
@@ -62,7 +60,7 @@ export function isManualInstallmentSeriesRow(
  *
  * - `installments` is clamped to the backend's [2, 360] range (empty or
  *   invalid input falls back to 2).
- * - Split-with-group and FX overrides ride along on the base so every parcel
+ * - FX overrides ride along on the base so every parcel
  *   is finalized exactly like a single manual transaction.
  */
 export function buildInstallmentSeriesInput(
@@ -84,7 +82,6 @@ export function buildInstallmentSeriesInput(
       ...(input.currency ? { currency: input.currency } : {}),
       notes: input.notes.trim() || null,
       ...input.fxFields,
-      ...(input.splits ? { splits: input.splits } : {}),
     },
     installments,
     first_installment_status: input.status,
@@ -98,7 +95,7 @@ export function buildInstallmentSeriesInput(
  * The dialog sends a full form payload on save, while the backend
  * serializes Decimal-backed fields (amount, amount_primary, fx_rate_used)
  * as strings, so values are compared leniently: numeric fields are coerced
- * and splits are normalized before comparison. Status-only edits skip the
+ * before comparison. Status-only edits skip the
  * installment-series scope prompt.
  */
 export function hasNonStatusChange(
@@ -116,28 +113,6 @@ export function hasNonStatusChange(
     const n = Number(v)
     return Number.isFinite(n) ? n : null
   }
-  const normalizeSplits = (v: TransactionSplitsInput | null | undefined) => {
-    if (!v || v.splits.length === 0) return null
-    return {
-      share_type: v.share_type,
-      splits: v.splits.map((s) => ({
-        group_member_id: s.group_member_id,
-        share_amount: toNumber(s.share_amount),
-        share_pct: toNumber(s.share_pct),
-      })),
-    }
-  }
-  const originalSplits: TransactionSplitsInput | null = original.splits?.length
-    ? {
-        share_type: (original.splits[0].share_type as TransactionSplitsInput['share_type']) ?? 'equal',
-        splits: original.splits.map((s) => ({
-          group_member_id: s.group_member_id,
-          share_amount: s.share_amount,
-          share_pct: s.share_pct,
-        })),
-      }
-    : null
-
   return Object.entries(data).some(([key, value]) => {
     if (key === 'status' || key === 'apply_to' || key === 'apply_to_transfer_pair') {
       return false
@@ -148,12 +123,6 @@ export function hasNonStatusChange(
     }
     if (value === originalValue) return false
     if (value == null && originalValue == null) return false
-    if (key === 'splits') {
-      return (
-        JSON.stringify(normalizeSplits(value as TransactionSplitsInput | null)) !==
-        JSON.stringify(normalizeSplits(originalSplits))
-      )
-    }
     return true
   })
 }

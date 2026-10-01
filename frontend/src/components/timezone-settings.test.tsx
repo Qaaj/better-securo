@@ -48,8 +48,6 @@ it('refreshes date-sensitive data without invalidating unrelated settings', asyn
     ['recurring'],
     ['dashboard'],
     ['reports'],
-    ['budgets'],
-    ['goals'],
     ['assets'],
     ['asset-values'],
     ['asset-trend'],

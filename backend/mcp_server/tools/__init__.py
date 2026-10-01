@@ -6,13 +6,11 @@ from mcp_server.tools import (  # noqa: F401
     accounts,
     categories,
     payees,
-    budgets,
     reports,
     search,
     aggregate,
     proposals,
     knowledge,
     lifecycle,
-    groups,
     rules,
 )

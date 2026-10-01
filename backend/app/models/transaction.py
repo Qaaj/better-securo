@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from app.models.payee import Payee
     from app.models.recurring_transaction import RecurringTransaction
     from app.models.transaction_attachment import TransactionAttachment
-    from app.models.transaction_split import TransactionSplit
 
 
 class Transaction(Base):
@@ -128,15 +127,8 @@ class Transaction(Base):
     attachments: Mapped[list["TransactionAttachment"]] = relationship(
         back_populates="transaction", cascade="all, delete-orphan"
     )
-    splits: Mapped[list["TransactionSplit"]] = relationship(
-        back_populates="transaction", cascade="all, delete-orphan"
-    )
 
     # Populated dynamically by the service (not DB columns).
-    is_shared: bool = False
-    viewer_share = cast(Optional[Decimal], None)
-    group_id = cast(Optional[uuid.UUID], None)
-    parent_owner_name = cast(Optional[str], None)
     attachment_count: int = 0
     payee_name = cast(Optional[str], None)
 

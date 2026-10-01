@@ -21,7 +21,7 @@ Starting from an existing issue means the work is already something we want, so 
 
 ## Before Large or Core Changes
 
-For anything bigger, a new feature, a refactor, or a change to a core mechanism (accounts, transactions, budgets, the rules engine, workspaces, sync, and similar), we'd love to talk it through **before** you write the code. It helps us confirm the idea fits the project's direction and that it's the right moment to build it, and it saves you from investing time in a PR that might not land.
+For anything bigger, a new feature, a refactor, or a change to a core mechanism (accounts, transactions, the rules engine, workspaces, sync, and similar), we'd love to talk it through **before** you write the code. It helps us confirm the idea fits the project's direction and that it's the right moment to build it, and it saves you from investing time in a PR that might not land.
 
 Good ways to align first:
 

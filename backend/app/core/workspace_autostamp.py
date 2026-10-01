@@ -23,13 +23,9 @@ from app.models.asset import Asset
 from app.models.asset_group import AssetGroup
 from app.models.asset_value import AssetValue
 from app.models.bank_connection import BankConnection
-from app.models.budget import Budget
 from app.models.category import Category
 from app.models.category_group import CategoryGroup
 from app.models.credit_card_bill import CreditCardBill
-from app.models.goal import Goal
-from app.models.group import Group, GroupMember
-from app.models.group_settlement import GroupSettlement
 from app.models.import_log import ImportLog
 from app.models.invoice import Invoice, InvoiceAllocation, InvoiceLine, InvoiceSettings
 from app.models.payee import Payee, PayeeMapping, PayeeTaxId
@@ -37,7 +33,6 @@ from app.models.recurring_transaction import RecurringTransaction
 from app.models.rule import Rule
 from app.models.transaction import Transaction
 from app.models.transaction_attachment import TransactionAttachment
-from app.models.transaction_split import TransactionSplit
 from app.models.workspace import Workspace, WorkspaceMember
 
 
@@ -47,14 +42,9 @@ _AUTOSTAMP_MODELS = (
     AssetGroup,
     AssetValue,
     BankConnection,
-    Budget,
     Category,
     CategoryGroup,
     CreditCardBill,
-    Goal,
-    Group,
-    GroupMember,
-    GroupSettlement,
     ImportLog,
     Invoice,
     InvoiceAllocation,
@@ -67,7 +57,6 @@ _AUTOSTAMP_MODELS = (
     Rule,
     Transaction,
     TransactionAttachment,
-    TransactionSplit,
 )
 
 
@@ -111,7 +100,6 @@ _PARENT_LOOKUPS: tuple[tuple[str, str], ...] = (
     ("account_id", "app.models.account:Account"),
     ("connection_id", "app.models.bank_connection:BankConnection"),
     ("asset_id", "app.models.asset:Asset"),
-    ("group_id", "app.models.group:Group"),
     ("payee_id", "app.models.payee:Payee"),
     ("transaction_id", "app.models.transaction:Transaction"),
     ("agent_id", "app.agents.models.agent:Agent"),

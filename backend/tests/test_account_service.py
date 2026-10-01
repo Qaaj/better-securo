@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
 from app.models.category import Category
-from app.models.goal import Goal
 from app.models.import_log import ImportLog
 from app.models.recurring_transaction import RecurringTransaction
 from app.models.transaction import Transaction
@@ -538,34 +537,6 @@ async def test_delete_account_with_imported_transactions(session: AsyncSession, 
         select(Transaction).where(Transaction.id == tx_id)
     )
     assert orphan_tx.scalar_one_or_none() is None
-
-
-@pytest.mark.asyncio
-async def test_delete_account_with_linked_goal(session: AsyncSession, test_user, test_workspace):
-    """Regression (#110): deleting an account tracked by a goal must succeed;
-    the goal survives with account_id nulled out (progress history is kept)."""
-    from sqlalchemy import select
-
-    account = await _make_account(session, test_user.id, "Goal Tracked")
-    goal = Goal(
-        id=uuid.uuid4(), user_id=test_user.id, name="Emergency fund",
-        target_amount=Decimal("10000.00"), current_amount=Decimal("2500.00"),
-        currency="BRL", tracking_type="account", account_id=account.id,
-    )
-    session.add(goal)
-    await session.commit()
-    goal_id = goal.id
-
-    result = await delete_account(session, account.id, test_workspace.id)
-    assert result is True
-
-    session.expire_all()
-    surviving = await session.execute(
-        select(Goal).where(Goal.id == goal_id)
-    )
-    kept = surviving.scalar_one()
-    assert kept.account_id is None
-    assert kept.current_amount == Decimal("2500.00")
 
 
 # ---------------------------------------------------------------------------

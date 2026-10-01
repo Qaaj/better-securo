@@ -170,7 +170,6 @@ async def delete_user(
     # Cascade delete user data in correct order
     from app.models.transaction_attachment import TransactionAttachment
     from app.models.transaction import Transaction
-    from app.models.budget import Budget
     from app.models.recurring_transaction import RecurringTransaction
     from app.models.import_log import ImportLog
     from app.models.rule import Rule
@@ -192,7 +191,6 @@ async def delete_user(
 
     # Delete in dependency order
     await session.execute(delete(Transaction).where(Transaction.user_id == user_id))
-    await session.execute(delete(Budget).where(Budget.user_id == user_id))
     await session.execute(delete(RecurringTransaction).where(RecurringTransaction.user_id == user_id))
     await session.execute(delete(ImportLog).where(ImportLog.user_id == user_id))
     await session.execute(delete(Rule).where(Rule.user_id == user_id))

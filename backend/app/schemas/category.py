@@ -54,6 +54,5 @@ class CategoryUsageRead(BaseModel):
     """What still points at a category, for the delete dialog to report."""
 
     transactions: int = 0
-    budgets: int = 0
     recurring_transactions: int = 0
     rules: list[RuleSummary] = []

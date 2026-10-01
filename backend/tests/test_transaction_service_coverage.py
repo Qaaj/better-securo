@@ -1,8 +1,8 @@
 """Additional coverage for app.services.transaction_service.
 
-Targets the previously-uncovered branches: group-scope visibility, filtered
+Targets the previously-uncovered branches: filtered
 summary, sorting, transfer candidates / linking / counterparts, FX cascade in
-updates, splits in create/update, bulk add-to-group, bill-link re-sync, and
+updates, bill-link re-sync, and
 assorted edge branches. See test_transaction_service.py for the baseline.
 """
 
@@ -17,20 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import User, Workspace
 from app.models.account import Account
 from app.models.credit_card_bill import CreditCardBill
-from app.models.group import Group, GroupMember
 from app.models.transaction import Transaction
 from app.schemas.transaction import (
     TransactionCreate,
     TransactionUpdate,
     TransferCreate,
 )
-from app.schemas.transaction_split import (
-    TransactionSplitInput,
-    TransactionSplitsInput,
-)
 from app.services.transaction_service import (
     bulk_add_tags,
-    bulk_add_to_group,
     bulk_remove_tags,
     create_transaction,
     create_transfer,
@@ -116,44 +110,6 @@ async def _mk_txn(session: AsyncSession, test_user: User, account: Account, **kw
     await session.commit()
     await session.refresh(txn)
     return txn
-
-
-async def _mk_group(session: AsyncSession, test_user: User, test_workspace: Workspace, with_self=True, n_members=2):
-    group = Group(
-        id=uuid.uuid4(),
-        user_id=test_user.id,
-        workspace_id=test_workspace.id,
-        name=f"G-{uuid.uuid4().hex[:6]}",
-        default_currency="BRL",
-    )
-    session.add(group)
-    await session.flush()
-    members = []
-    if with_self:
-        self_m = GroupMember(
-            id=uuid.uuid4(),
-            group_id=group.id,
-            workspace_id=test_workspace.id,
-            name="Me",
-            linked_user_id=test_user.id,
-            is_self=True,
-        )
-        session.add(self_m)
-        members.append(self_m)
-    for i in range(n_members):
-        m = GroupMember(
-            id=uuid.uuid4(),
-            group_id=group.id,
-            workspace_id=test_workspace.id,
-            name=f"Member{i}",
-        )
-        session.add(m)
-        members.append(m)
-    await session.commit()
-    for m in members:
-        await session.refresh(m)
-    await session.refresh(group)
-    return group, members
 
 
 # ---------------------------------------------------------------------------
@@ -402,65 +358,6 @@ async def test_get_transactions_sorting(session, test_user, test_workspace, acct
 
 
 # ---------------------------------------------------------------------------
-# Group-scope visibility (lines 110-112, 146-155)
-# ---------------------------------------------------------------------------
-
-
-async def test_get_transactions_group_scope(session: AsyncSession, test_user: User, test_workspace: Workspace, acct):
-    group, members = await _mk_group(session, test_user, test_workspace)
-    txn = await _mk_txn(session, test_user, acct, description="Shared dinner", amount=Decimal("100"))
-    # Split among the two non-self members
-    payload = TransactionSplitsInput(
-        share_type="equal",
-        splits=[TransactionSplitInput(group_member_id=members[1].id),
-                TransactionSplitInput(group_member_id=members[2].id)],
-    )
-    from app.services import split_service
-    await split_service.replace_splits(session, txn, payload, test_user.id)
-    await session.commit()
-
-    res, total, _ = await get_transactions(
-        session, test_workspace.id, test_user.id, group_id=group.id
-    )
-    assert {t.description for t in res} == {"Shared dinner"}
-    assert total == 1
-
-
-async def test_get_transactions_group_scope_not_visible(session: AsyncSession, test_user: User, test_workspace: Workspace, acct):
-    # A random group id the user cannot see returns the early-out tuple.
-    result = await get_transactions(
-        session, test_workspace.id, test_user.id, group_id=uuid.uuid4()
-    )
-    # The not-visible branch short-circuits with ([], 0).
-    assert result[0] == []
-    assert result[1] == 0
-
-
-async def test_get_transactions_owner_share_tagging(session: AsyncSession, test_user: User, test_workspace: Workspace, acct):
-    """Owner with a self-split should get group_id and viewer_share tagged."""
-    group, members = await _mk_group(session, test_user, test_workspace)
-    txn = await _mk_txn(session, test_user, acct, description="With self share", amount=Decimal("90"))
-    self_member = next(m for m in members if m.is_self)
-    other = next(m for m in members if not m.is_self)
-    payload = TransactionSplitsInput(
-        share_type="equal",
-        splits=[TransactionSplitInput(group_member_id=self_member.id),
-                TransactionSplitInput(group_member_id=other.id)],
-    )
-    from app.services import split_service
-    await split_service.replace_splits(session, txn, payload, test_user.id)
-    await session.commit()
-
-    res, _, _ = await get_transactions(session, test_workspace.id, test_user.id)
-    tagged = next(t for t in res if t.description == "With self share")
-
-    assert tagged is not None
-    assert tagged.group_id == group.id
-    assert tagged.is_shared is False
-    assert tagged.viewer_share == Decimal("45.00")
-
-
-# ---------------------------------------------------------------------------
 # include_opening_balance branch
 # ---------------------------------------------------------------------------
 
@@ -671,42 +568,8 @@ async def test_create_transfer_counterpart_dest_missing(session, test_user, test
 
 
 # ---------------------------------------------------------------------------
-# update_transaction — splits, FX cascade, effective_bill_date (1154+, 1166-1173)
+# update_transaction — FX cascade, effective_bill_date (1154+, 1166-1173)
 # ---------------------------------------------------------------------------
-
-
-async def test_update_transaction_with_splits(session, test_user, test_workspace, acct):
-    group, members = await _mk_group(session, test_user, test_workspace)
-    txn = await create_transaction(session, test_workspace.id, test_user.id, TransactionCreate(
-        account_id=acct.id, description="ToSplit", amount=Decimal("100"),
-        date=date.today(), type="debit",
-    ))
-    payload = TransactionSplitsInput(
-        share_type="equal",
-        splits=[TransactionSplitInput(group_member_id=members[1].id),
-                TransactionSplitInput(group_member_id=members[2].id)],
-    )
-    updated = await update_transaction(
-        session, txn.id, test_workspace.id, test_user.id,
-        TransactionUpdate(splits=payload),
-    )
-
-    assert updated is not None
-    assert len(updated.splits) == 2
-
-
-async def test_create_transaction_with_splits(session, test_user, test_workspace, acct):
-    group, members = await _mk_group(session, test_user, test_workspace)
-    payload = TransactionSplitsInput(
-        share_type="equal",
-        splits=[TransactionSplitInput(group_member_id=members[1].id),
-                TransactionSplitInput(group_member_id=members[2].id)],
-    )
-    txn = await create_transaction(session, test_workspace.id, test_user.id, TransactionCreate(
-        account_id=acct.id, description="CreatedWithSplit", amount=Decimal("80"),
-        date=date.today(), type="debit", splits=payload,
-    ))
-    assert len(txn.splits) == 2
 
 
 async def test_update_transfer_cascades_amount_cross_currency(session, test_user, test_workspace, acct, acct_usd):
@@ -848,117 +711,6 @@ async def test_bulk_remove_tags_skips_empty_notes(session, test_user, test_works
     t = await _mk_txn(session, test_user, acct, description="NoNotes", notes=None)
     touched = await bulk_remove_tags(session, test_workspace.id, [t.id], ["#anything"])
     assert touched == 0
-
-
-# ---------------------------------------------------------------------------
-# bulk_add_to_group (1308, 1314, 1328-1380)
-# ---------------------------------------------------------------------------
-
-
-async def test_bulk_add_to_group_equal(session, test_user, test_workspace, acct):
-    group, members = await _mk_group(session, test_user, test_workspace)
-    t1 = await _mk_txn(session, test_user, acct, description="G1", amount=Decimal("100"))
-    t2 = await _mk_txn(session, test_user, acct, description="G2", amount=Decimal("60"))
-
-    result = await bulk_add_to_group(
-        session, test_workspace.id, test_user.id, [t1.id, t2.id], group.id, share_type="equal"
-    )
-    assert result["updated"] == 2
-    assert result["skipped"] == 0
-
-
-async def test_bulk_add_to_group_percent_with_member_splits(session, test_user, test_workspace, acct):
-    group, members = await _mk_group(session, test_user, test_workspace)
-    non_self = [m for m in members if not m.is_self]
-    t1 = await _mk_txn(session, test_user, acct, description="P1", amount=Decimal("100"))
-
-    splits = [
-        TransactionSplitInput(group_member_id=non_self[0].id, share_pct=Decimal("60")),
-        TransactionSplitInput(group_member_id=non_self[1].id, share_pct=Decimal("40")),
-    ]
-    result = await bulk_add_to_group(
-        session, test_workspace.id, test_user.id, [t1.id], group.id,
-        share_type="percent", member_splits=splits,
-    )
-    assert result["updated"] == 1
-
-
-async def test_bulk_add_to_group_skips_transfers_and_existing_splits(session, test_user, test_workspace, acct):
-    group, members = await _mk_group(session, test_user, test_workspace)
-    transfer = await _mk_txn(
-        session, test_user, acct, description="Xfer", amount=Decimal("50"),
-        transfer_pair_id=uuid.uuid4(),
-    )
-    # A tx that already has splits
-    pre_split = await _mk_txn(session, test_user, acct, description="Pre", amount=Decimal("80"))
-    from app.services import split_service
-    await split_service.replace_splits(
-        session, pre_split,
-        TransactionSplitsInput(share_type="equal", splits=[
-            TransactionSplitInput(group_member_id=members[1].id),
-        ]),
-        test_user.id,
-    )
-    await session.commit()
-
-    result = await bulk_add_to_group(
-        session, test_workspace.id, test_user.id,
-        [transfer.id, pre_split.id], group.id, share_type="equal",
-    )
-    assert result["updated"] == 0
-    assert result["skipped"] == 2
-
-
-async def test_bulk_add_to_group_invalid_share_type(session, test_user, test_workspace):
-    group, _ = await _mk_group(session, test_user, test_workspace)
-    with pytest.raises(ValueError, match="equal' or 'percent"):
-        await bulk_add_to_group(
-            session, test_workspace.id, test_user.id, [uuid.uuid4()], group.id, share_type="exact"
-        )
-
-
-async def test_bulk_add_to_group_empty_ids(session, test_user, test_workspace):
-    group, _ = await _mk_group(session, test_user, test_workspace)
-    result = await bulk_add_to_group(
-        session, test_workspace.id, test_user.id, [], group.id, share_type="equal"
-    )
-    assert result == {"updated": 0, "skipped": 0}
-
-
-async def test_bulk_add_to_group_group_not_found(session, test_user, test_workspace):
-    with pytest.raises(ValueError, match="Group not found"):
-        await bulk_add_to_group(
-            session, test_workspace.id, test_user.id, [uuid.uuid4()], uuid.uuid4(), share_type="equal"
-        )
-
-
-async def test_bulk_add_to_group_no_members(session, test_user, test_workspace):
-    group, _ = await _mk_group(session, test_user, test_workspace, with_self=False, n_members=0)
-    with pytest.raises(ValueError, match="no members"):
-        await bulk_add_to_group(
-            session, test_workspace.id, test_user.id, [uuid.uuid4()], group.id, share_type="equal"
-        )
-
-
-async def test_bulk_add_to_group_invalid_member(session, test_user, test_workspace, acct):
-    group, members = await _mk_group(session, test_user, test_workspace)
-    bad_splits = [TransactionSplitInput(group_member_id=uuid.uuid4())]
-    with pytest.raises(ValueError, match="split members not found"):
-        await bulk_add_to_group(
-            session, test_workspace.id, test_user.id, [uuid.uuid4()], group.id,
-            share_type="equal", member_splits=bad_splits,
-        )
-
-
-async def test_bulk_add_to_group_counts_missing_ids_as_skipped(session, test_user, test_workspace, acct):
-    group, members = await _mk_group(session, test_user, test_workspace)
-    t1 = await _mk_txn(session, test_user, acct, description="Real", amount=Decimal("40"))
-    missing = uuid.uuid4()
-    result = await bulk_add_to_group(
-        session, test_workspace.id, test_user.id, [t1.id, missing], group.id, share_type="equal"
-    )
-    assert result["updated"] == 1
-    assert result["skipped"] == 1
 
 
 # ---------------------------------------------------------------------------

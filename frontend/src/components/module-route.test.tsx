@@ -13,15 +13,15 @@ function renderGuard() {
     <Routes>
       <Route path="/" element={<div>home</div>} />
       <Route
-        path="/budgets"
+        path="/recurring"
         element={
-          <ModuleRoute module="budgets">
-            <div>budgets page</div>
+          <ModuleRoute module="recurring">
+            <div>recurring page</div>
           </ModuleRoute>
         }
       />
     </Routes>,
-    { route: '/budgets' },
+    { route: '/recurring' },
   )
 }
 
@@ -31,7 +31,7 @@ describe('ModuleRoute', () => {
 
     renderGuard()
 
-    expect(screen.getByText('budgets page')).toBeInTheDocument()
+    expect(screen.getByText('recurring page')).toBeInTheDocument()
   })
 
   it('sends the user home when the workspace does not have it', () => {
@@ -42,12 +42,12 @@ describe('ModuleRoute', () => {
     renderGuard()
 
     expect(screen.getByText('home')).toBeInTheDocument()
-    expect(screen.queryByText('budgets page')).not.toBeInTheDocument()
+    expect(screen.queryByText('recurring page')).not.toBeInTheDocument()
   })
 
   it('asks about the module it was given, not a hard-coded one', () => {
-    // Deliberately mismatched: the route is /budgets but the guard is told
-    // "invoices". Asking about "budgets" here would pass if the component
+    // Deliberately mismatched: the route is /recurring but the guard is told
+    // "invoices". Asking about "recurring" here would pass if the component
     // derived the module from the path or hard-coded it.
     const hasModule = vi.fn().mockReturnValue(true)
     useWorkspace.mockReturnValue({ hasModule, isLoading: false })
@@ -56,19 +56,19 @@ describe('ModuleRoute', () => {
       <Routes>
         <Route path="/" element={<div>home</div>} />
         <Route
-          path="/budgets"
+          path="/recurring"
           element={
             <ModuleRoute module="invoices">
-              <div>budgets page</div>
+              <div>recurring page</div>
             </ModuleRoute>
           }
         />
       </Routes>,
-      { route: '/budgets' },
+      { route: '/recurring' },
     )
 
     expect(hasModule).toHaveBeenCalledWith('invoices')
-    expect(hasModule).not.toHaveBeenCalledWith('budgets')
+    expect(hasModule).not.toHaveBeenCalledWith('recurring')
   })
 
   it('shows a loading indicator instead of bouncing to home', () => {
@@ -80,6 +80,6 @@ describe('ModuleRoute', () => {
 
     expect(container.querySelector('.animate-spin')).toBeInTheDocument()
     expect(screen.queryByText('home')).not.toBeInTheDocument()
-    expect(screen.queryByText('budgets page')).not.toBeInTheDocument()
+    expect(screen.queryByText('recurring page')).not.toBeInTheDocument()
   })
 })

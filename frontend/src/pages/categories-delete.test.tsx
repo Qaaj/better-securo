@@ -57,7 +57,7 @@ function category(id: string, name: string, overrides = {}) {
 const FOOD = category('food', 'Food')
 const TRANSPORT = category('transport', 'Transport')
 
-const NO_USAGE = { transactions: 0, budgets: 0, recurring_transactions: 0, rules: [] }
+const NO_USAGE = { transactions: 0, recurring_transactions: 0, rules: [] }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -86,7 +86,6 @@ describe('deleting a category', () => {
   it('asks where the entries go when the category is still in use', async () => {
     api.categories.usage.mockResolvedValue({
       transactions: 142,
-      budgets: 2,
       recurring_transactions: 0,
       rules: [{ id: 'rule-1', name: 'Groceries' }],
     })

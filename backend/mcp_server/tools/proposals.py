@@ -21,15 +21,11 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.app_clock import app_today
 from app.models.account import Account
 from app.models.category import Category
-from app.models.group import Group, GroupMember
 from app.models.recurring_transaction import RecurringTransaction
 from app.models.transaction import Transaction
-from app.schemas.budget import BudgetCreate
 from app.schemas.category import CategoryCreate
-from app.schemas.goal import GoalCreate
 from app.schemas.recurring_transaction import (
     RecurringTransactionCreate,
     RecurringTransactionUpdate,
@@ -37,11 +33,8 @@ from app.schemas.recurring_transaction import (
 )
 from app.schemas.rule import RuleAction, RuleCondition, RuleCreate
 from app.schemas.transaction import TransactionCreate
-from app.schemas.transaction_split import TransactionSplitInput, TransactionSplitsInput
 from app.services import (
-    budget_service,
     category_service,
-    goal_service,
     recurring_transaction_service,
     rule_service,
     transaction_service,
@@ -251,100 +244,12 @@ async def propose_create_category(
 
 
 @tool(
-    name="propose_create_budget",
-    description=_PROPOSAL_PREFACE
-    + (
-        "Preview a budget creation for a category and month. Returns the "
-        "proposal plus any existing budget for the same category/month. "
-        "STRICT: if the user mentions a category that does NOT match an "
-        "existing one (call list_categories first to verify), do not "
-        "silently substitute a different category — instead, ask the user "
-        "to confirm an alternative or call propose_create_category first "
-        "to add the missing one."
-    ),
-    parameters={
-        "type": "object",
-        "properties": {
-            "category_id": {"type": "string", "format": "uuid"},
-            "month": {"type": "string", "format": "date"},
-            "amount": {"type": "number", "exclusiveMinimum": 0},
-            "currency": {"type": "string"},
-            "is_recurring": {"type": "boolean", "default": False},
-            "apply": _APPLY_FIELD,
-        },
-        "required": ["category_id", "month", "amount"],
-        "additionalProperties": False,
-    },
-    is_proposal=True,
-    tags=["propose", "budgets"],
-)
-async def propose_create_budget(
-    *,
-    session: AsyncSession,
-    ctx: CallContext,
-    category_id: str,
-    month: str,
-    amount: float,
-    currency: str | None = None,
-    is_recurring: bool = False,
-    apply: bool = False,
-) -> dict[str, Any]:
-    ws_id = await resolve_workspace_id(session, ctx)
-    cat_id = parse_uuid(category_id)
-    target_month = (parse_date(month) or app_today()).replace(day=1)
-
-    cat = (
-        await session.execute(
-            select(Category).where(Category.id == cat_id, Category.workspace_id == ws_id)
-        )
-    ).scalar_one_or_none()
-    if cat is None:
-        return {"error": "category not found"}
-
-    preview = {
-        "kind": "create_budget",
-        "proposed": {
-            "category_id": str(cat.id),
-            "category_name": cat.name,
-            "month": target_month.isoformat(),
-            "amount": float(amount),
-            "currency": currency,
-            "is_recurring": is_recurring,
-        },
-        "apply_endpoint": "POST /api/budgets",
-    }
-
-    if _can_apply(ctx, apply):
-        created = await budget_service.create_budget(
-            session,
-            ws_id,
-            ctx.user_id,
-            BudgetCreate(
-                category_id=cat.id,
-                amount=Decimal(str(amount)),
-                month=target_month,
-                is_recurring=is_recurring,
-            ),
-        )
-        return {**preview, "applied": True, "id": str(created.id)}
-
-    return preview
-
-
-@tool(
     name="propose_create_transaction",
     description=_PROPOSAL_PREFACE
     + (
         "Build a preview for adding a one-off transaction (e.g. 'add a "
         "R$50 lunch today'). Validates the account/category exist; "
-        "leaves currency to the account's default when not provided.\n\n"
-        "Group splits: pass `group_id` + `splits` to attach a Splitwise-"
-        "style breakdown. `splits.share_type='equal'` divides the amount "
-        "evenly across the listed `member_ids` — perfect for 'crie no "
-        "grupo dos Amigos e divida igualmente'. Use `'exact'` with a "
-        "`share_amount` per member, or `'percent'` with `share_pct` per "
-        "member, for custom shares. All members must belong to the same "
-        "group as `group_id`. Call `list_groups` first to fetch IDs."
+        "leaves currency to the account's default when not provided."
     ),
     parameters={
         "type": "object",
@@ -365,40 +270,6 @@ async def propose_create_budget(
             "date": {"type": "string", "format": "date", "description": "Defaults to today"},
             "currency": {"type": "string", "description": "Defaults to the account's currency"},
             "notes": {"type": "string"},
-            "group_id": {
-                "type": "string",
-                "format": "uuid",
-                "description": "Optional: attach to an expense-sharing group",
-            },
-            "splits": {
-                "type": "object",
-                "description": "Required when `group_id` is set. Defines how the amount is split among group members.",
-                "properties": {
-                    "share_type": {"type": "string", "enum": ["equal", "exact", "percent"]},
-                    "members": {
-                        "type": "array",
-                        "minItems": 1,
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "member_id": {"type": "string", "format": "uuid"},
-                                "share_amount": {
-                                    "type": "number",
-                                    "description": "Required for share_type='exact' (sum must equal `amount`)",
-                                },
-                                "share_pct": {
-                                    "type": "number",
-                                    "description": "Required for share_type='percent' (must sum to 100)",
-                                },
-                            },
-                            "required": ["member_id"],
-                            "additionalProperties": False,
-                        },
-                    },
-                },
-                "required": ["share_type", "members"],
-                "additionalProperties": False,
-            },
             "apply": _APPLY_FIELD,
         },
         "required": ["description", "amount", "type", "account_id"],
@@ -419,8 +290,6 @@ async def propose_create_transaction(
     date: str | None = None,
     currency: str | None = None,
     notes: str | None = None,
-    group_id: str | None = None,
-    splits: dict[str, Any] | None = None,
     apply: bool = False,
 ) -> dict[str, Any]:
     ws_id = await resolve_workspace_id(session, ctx)
@@ -445,95 +314,6 @@ async def propose_create_transaction(
         if cat is None:
             return {"error": "category not found"}
 
-    # Validate group + splits (if any) so the preview is honest.
-    splits_preview: list[dict[str, Any]] | None = None
-    group_name: str | None = None
-    if group_id or splits:
-        if not (group_id and splits):
-            return {"error": "group_id and splits must be provided together"}
-        gid = parse_uuid(group_id)
-        # Group ownership stays user-scoped (Splitwise authorship check) —
-        # the user_id column on `groups` represents the owner, not a
-        # tenant filter.
-        group = (
-            await session.execute(
-                select(Group).where(Group.id == gid, Group.user_id == ctx.user_id)
-            )
-        ).scalar_one_or_none()
-        if group is None:
-            return {"error": "group not found"}
-        group_name = group.name
-
-        share_type = splits.get("share_type")
-        if share_type not in ("equal", "exact", "percent"):
-            return {"error": f"invalid share_type: {share_type!r}"}
-        members_in = splits.get("members") or []
-        if not members_in:
-            return {"error": "splits.members must not be empty"}
-        member_ids = [parse_uuid(m["member_id"]) for m in members_in]
-        rows = (
-            (
-                await session.execute(
-                    select(GroupMember).where(
-                        GroupMember.id.in_(member_ids), GroupMember.group_id == gid
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        if len(rows) != len(set(member_ids)):
-            return {"error": "one or more members do not belong to the given group"}
-        name_by_id = {m.id: m.name for m in rows}
-
-        # Materialize a preview for the UI/LLM. The actual write happens
-        # via POST /api/transactions which re-runs the same math.
-        n = len(members_in)
-        amt = float(amount)
-        if share_type == "equal":
-            per = round(amt / n, 2)
-            residual = round(amt - per * (n - 1), 2)
-            splits_preview = [
-                {
-                    "member_id": str(m["member_id"]),
-                    "member_name": name_by_id.get(parse_uuid(m["member_id"]), "?"),
-                    "share_amount": (residual if i == n - 1 else per),
-                }
-                for i, m in enumerate(members_in)
-            ]
-        elif share_type == "exact":
-            total = round(sum((float(m.get("share_amount") or 0) for m in members_in), 0.0), 2)
-            if abs(total - amt) > 0.01:
-                return {"error": f"exact share amounts sum to {total}, expected {amt}"}
-            splits_preview = [
-                {
-                    "member_id": str(m["member_id"]),
-                    "member_name": name_by_id.get(parse_uuid(m["member_id"]), "?"),
-                    "share_amount": float(m.get("share_amount") or 0),
-                }
-                for m in members_in
-            ]
-        else:  # percent
-            pct_sum = round(sum((float(m.get("share_pct") or 0) for m in members_in), 0.0), 2)
-            if abs(pct_sum - 100.0) > 0.01:
-                return {"error": f"percent shares sum to {pct_sum}, expected 100"}
-            running = 0.0
-            splits_preview = []
-            for i, m in enumerate(members_in):
-                if i == n - 1:
-                    share = round(amt - running, 2)
-                else:
-                    share = round(amt * float(m.get("share_pct") or 0) / 100.0, 2)
-                    running += share
-                splits_preview.append(
-                    {
-                        "member_id": str(m["member_id"]),
-                        "member_name": name_by_id.get(parse_uuid(m["member_id"]), "?"),
-                        "share_amount": share,
-                        "share_pct": float(m.get("share_pct") or 0),
-                    }
-                )
-
     target_date = parse_date(date) or _today()
     proposed: dict[str, Any] = {
         "description": description.strip(),
@@ -547,14 +327,6 @@ async def propose_create_transaction(
         "category_name": cat.name if cat else None,
         "notes": (notes or None),
     }
-    if splits_preview is not None:
-        assert splits is not None
-        proposed["group_id"] = group_id
-        proposed["group_name"] = group_name
-        proposed["splits"] = {
-            "share_type": splits["share_type"],
-            "items": splits_preview,
-        }
     preview = {
         "kind": "create_transaction",
         "proposed": proposed,
@@ -562,26 +334,6 @@ async def propose_create_transaction(
     }
 
     if _can_apply(ctx, apply):
-        # Re-shape splits for the service. The propose tool used `member_id`
-        # but TransactionSplitInput uses `group_member_id`.
-        splits_payload: TransactionSplitsInput | None = None
-        if splits is not None:
-            splits_payload = TransactionSplitsInput(
-                share_type=splits["share_type"],
-                splits=[
-                    TransactionSplitInput(
-                        group_member_id=mid,
-                        share_amount=Decimal(str(m["share_amount"]))
-                        if m.get("share_amount") is not None
-                        else None,
-                        share_pct=Decimal(str(m["share_pct"]))
-                        if m.get("share_pct") is not None
-                        else None,
-                    )
-                    for m in splits["members"]
-                    if (mid := parse_uuid(m["member_id"])) is not None
-                ],
-            )
         try:
             created = await transaction_service.create_transaction(
                 session,
@@ -596,7 +348,6 @@ async def propose_create_transaction(
                     category_id=cat.id if cat else None,
                     currency=proposed["currency"],
                     notes=notes,
-                    splits=splits_payload,
                 ),
             )
         except ValueError as exc:
@@ -945,86 +696,6 @@ async def propose_cancel_recurring_transaction(
         if updated is None:
             return {**preview, "error": "recurring transaction not found"}
         return {**preview, "applied": True, "id": str(updated.id), "is_active": False}
-
-    return preview
-
-
-@tool(
-    name="propose_create_goal",
-    description=_PROPOSAL_PREFACE
-    + (
-        "Build a preview for creating a savings/financial goal (e.g. "
-        "'set a R$10k goal for travel')."
-    ),
-    parameters={
-        "type": "object",
-        "properties": {
-            "name": {"type": "string", "minLength": 1, "maxLength": 255},
-            "target_amount": {"type": "number", "exclusiveMinimum": 0},
-            "currency": {"type": "string", "description": "Defaults to user's primary currency"},
-            "deadline": {"type": "string", "format": "date"},
-            "initial_amount": {
-                "type": "number",
-                "minimum": 0,
-                "description": "How much you've already saved",
-            },
-            "icon": {"type": "string"},
-            "color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"},
-            "apply": _APPLY_FIELD,
-        },
-        "required": ["name", "target_amount"],
-        "additionalProperties": False,
-    },
-    is_proposal=True,
-    tags=["propose", "goals"],
-)
-async def propose_create_goal(
-    *,
-    session: AsyncSession,
-    ctx: CallContext,
-    name: str,
-    target_amount: float,
-    currency: str | None = None,
-    deadline: str | None = None,
-    initial_amount: float | None = None,
-    icon: str | None = None,
-    color: str | None = None,
-    apply: bool = False,
-) -> dict[str, Any]:
-    resolved_currency = (currency or "BRL").upper()
-    resolved_deadline = parse_date(deadline) if deadline else None
-    resolved_initial = float(initial_amount) if initial_amount is not None else 0.0
-    preview = {
-        "kind": "create_goal",
-        "proposed": {
-            "name": name.strip(),
-            "target_amount": float(target_amount),
-            "currency": resolved_currency,
-            "deadline": resolved_deadline.isoformat() if resolved_deadline else None,
-            "initial_amount": resolved_initial,
-            "icon": icon or "target",
-            "color": color or "#3B82F6",
-        },
-        "apply_endpoint": "POST /api/goals",
-    }
-
-    if _can_apply(ctx, apply):
-        ws_id = await resolve_workspace_id(session, ctx)
-        created = await goal_service.create_goal(
-            session,
-            ws_id,
-            ctx.user_id,
-            GoalCreate(
-                name=name.strip(),
-                target_amount=Decimal(str(target_amount)),
-                current_amount=Decimal(str(resolved_initial)),
-                currency=resolved_currency,
-                target_date=resolved_deadline,
-                icon=icon or "target",
-                color=color or "#3B82F6",
-            ),
-        )
-        return {**preview, "applied": True, "id": str(created.id)}
 
     return preview
 
