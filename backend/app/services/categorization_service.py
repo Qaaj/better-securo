@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 import uuid
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -26,6 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.models.categorization import CategorizationJob, CategorizationSuggestion
 from app.models.category import Category
 from app.models.transaction import Transaction
+from app.schemas.rule import RuleAction, RuleCondition, RuleCreate
+from app.services import rule_service
 
 logger = logging.getLogger(__name__)
 
@@ -392,6 +395,69 @@ def _examples(history: dict[str, Counter], by_id: dict) -> list[str]:
         if len(lines) >= EXAMPLE_COUNT:
             break
     return lines
+
+
+# ---------------------------------------------------------------------------
+# rules from accepted suggestions
+# ---------------------------------------------------------------------------
+MIN_RULE_LETTERS = 4
+_WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
+
+
+def _strip_accents(text: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
+
+
+def rule_pattern(key: str) -> Optional[str]:
+    """A regex that finds this merchant in a raw description, or None when the
+    name is too short or generic to build a safe rule from.
+
+    The words of the merchant key must open the description, in order, separated
+    by anything that is not a letter, and not be part of a longer word. A key that was cut
+    at the length limit loses its last word, which may be incomplete."""
+    words = [_strip_accents(w) for w in _WORD.findall(key)]
+    if len(key) >= 40 and len(words) > 1:
+        words = words[:-1]
+    if sum(len(w) for w in words) < MIN_RULE_LETTERS:
+        return None
+    separator = r"[^A-Za-z]+"
+    # Anchored at the start: a merchant key is the beginning of a description,
+    # so "paul" must not also catch "to paul fineau" or "louis delhaize".
+    return r"\A[^A-Za-z]*" + separator.join(re.escape(w) for w in words) + r"(?![A-Za-z])"
+
+
+async def create_rule_for_suggestion(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    user_id: uuid.UUID,
+    suggestion: CategorizationSuggestion,
+    category_id: uuid.UUID,
+) -> bool:
+    """Make a rule so future transactions of the merchant are categorized on
+    import. False when the merchant is too generic for a safe rule or a rule
+    for it already exists. Existing transactions are not touched: accepting
+    already categorized them."""
+    pattern = rule_pattern(suggestion.merchant_key)
+    if pattern is None:
+        return False
+    try:
+        await rule_service.create_rule(
+            session,
+            workspace_id,
+            user_id,
+            RuleCreate(
+                name=f"Auto: {suggestion.merchant_key}"[:255],
+                conditions=[RuleCondition(field="description", op="regex", value=pattern)],
+                actions=[RuleAction(op="set_category", value=str(category_id))],
+                apply_to_existing=False,
+            ),
+        )
+    except rule_service.DuplicateRuleError:
+        return False
+    except ValueError as exc:
+        logger.warning("No rule for %r: %s", suggestion.merchant_key, exc)
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------

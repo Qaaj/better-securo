@@ -182,8 +182,15 @@ async def accept_suggestion(
         await categorization_service.apply_suggestion(session, ctx.workspace.id, suggestion, category_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    rule_created = False
+    if data.create_rule:
+        rule_created = await categorization_service.create_rule_for_suggestion(
+            session, ctx.workspace.id, ctx.user_id, suggestion, category_id
+        )
     await session.refresh(suggestion)
-    return SuggestionRead.model_validate(suggestion)
+    result = SuggestionRead.model_validate(suggestion)
+    result.rule_created = rule_created
+    return result
 
 
 @router.post("/suggestions/{suggestion_id}/reject", response_model=SuggestionRead)
@@ -222,8 +229,13 @@ async def accept_all(
     ]
     groups = await categorization_service._uncategorized(session, ctx.workspace.id)
     applied = 0
+    rules = 0
     for suggestion in suggestions:
         applied += await categorization_service.apply_suggestion(
             session, ctx.workspace.id, suggestion, suggestion.suggested_category_id, groups=groups
         )
-    return AcceptAllResult(suggestions=len(suggestions), transactions=applied)
+        if data.create_rules and await categorization_service.create_rule_for_suggestion(
+            session, ctx.workspace.id, ctx.user_id, suggestion, suggestion.suggested_category_id
+        ):
+            rules += 1
+    return AcceptAllResult(suggestions=len(suggestions), transactions=applied, rules_created=rules)

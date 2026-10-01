@@ -583,6 +583,7 @@ export interface CategorizationSuggestion {
   source: 'history' | 'llm'
   status: 'pending' | 'accepted' | 'rejected'
   applied_count: number
+  rule_created?: boolean
 }
 
 export interface RecurringSuggestion {
