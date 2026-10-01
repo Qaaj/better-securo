@@ -151,3 +151,84 @@ describe('defaultDrawable', () => {
     expect(defaultDrawable('other', -5)).toBe(false)
   })
 })
+
+describe('drawdown years', () => {
+  it('saves surpluses and ignores shortfalls until the start year', () => {
+    const p = run({
+      assets: [pool(100_000)], outgoingMonthly: 1_000, recurringIncomeMonthly: 0,
+      assumptions: { drawdownStartYear: 3, horizonYears: 6 },
+    })
+    expect(p.rows[0].phase).toBe('saving')
+    expect(p.rows[2].drawable).toBeCloseTo(100_000) // shortfalls before the start are assumed paid from earnings
+    expect(p.rows[3].phase).toBe('drawdown')
+    expect(p.rows[3].drawable).toBeCloseTo(88_000)
+  })
+
+  it('still saves a surplus before the start year', () => {
+    const p = run({
+      assets: [pool(10_000)], outgoingMonthly: 1_000, recurringIncomeMonthly: 1_500,
+      assumptions: { drawdownStartYear: 2, horizonYears: 3 },
+    })
+    expect(p.rows[1].drawable).toBeCloseTo(10_000 + 2 * 6_000)
+  })
+
+  it('counts the runway from now, including the saving years', () => {
+    const p = run({
+      assets: [pool(120_000)], outgoingMonthly: 1_000,
+      assumptions: { drawdownStartYear: 5, horizonYears: 30 },
+    })
+    expect(p.runwayYears).toBeCloseTo(15)
+  })
+
+  it('reports what is left when the drawdown ends and marks the years after it', () => {
+    const p = run({
+      assets: [pool(120_000)], outgoingMonthly: 1_000,
+      assumptions: { drawdownEndYear: 4, horizonYears: 8 },
+    })
+    expect(p.leftAtEnd).toBeCloseTo(120_000 - 5 * 12_000)
+    expect(p.rows[4].phase).toBe('drawdown')
+    expect(p.rows[5].phase).toBe('after')
+  })
+
+  it('has no left-at-end figure without an end year', () => {
+    expect(run({ assets: [pool(1)] }).leftAtEnd).toBeNull()
+  })
+})
+
+describe('selling order', () => {
+  const assets: ProjectionAsset[] = [
+    { id: 'a', name: 'bonds', value: 10_000, drawable: true, sellOrder: 1 },
+    { id: 'b', name: 'etf', value: 100_000, drawable: true, sellOrder: 2 },
+    { id: 'c', name: 'crypto', value: 100_000, drawable: true },
+  ]
+
+  it('sells the first asset down before touching the next', () => {
+    const p = run({ assets, outgoingMonthly: 1_000, assumptions: { sellStrategy: 'ordered', horizonYears: 2 } })
+    expect(p.rows[0].byAsset.a ?? 0).toBeCloseTo(0) // 12k need, bonds only had 10k (emptied assets are left out)
+    expect(p.rows[0].drawn.a).toBeCloseTo(10_000)
+    expect(p.rows[0].drawn.b).toBeCloseTo(2_000)
+    expect(p.rows[0].byAsset.c).toBeCloseTo(100_000) // unset order sells last
+  })
+
+  it('spreads the draw in proportion when no order is asked for', () => {
+    const p = run({ assets, outgoingMonthly: 1_000, assumptions: { horizonYears: 1 } })
+    expect(p.rows[0].drawn.b).toBeCloseTo(p.rows[0].drawn.c)
+  })
+
+  it('reports each asset at the end of every year', () => {
+    const p = run({ assets, assumptions: { horizonYears: 1 } })
+    expect(Object.values(p.rows[0].byAsset).reduce((x, y) => x + y, 0)).toBeCloseTo(p.rows[0].drawable)
+  })
+})
+
+describe('fixed spending', () => {
+  it('replaces the recurring outgoings from its year', () => {
+    const p = run({
+      assets: [pool(500_000)], outgoingMonthly: 8_000,
+      whatIfs: [{ id: 's', kind: 'spend', label: 'frugal', monthly: 4_000, fromYear: 2 }],
+      assumptions: { horizonYears: 4 },
+    })
+    expect(p.rows[1].outgoing).toBeCloseTo(96_000)
+    expect(p.rows[2].outgoing).toBeCloseTo(48_000)
+  })
+})
