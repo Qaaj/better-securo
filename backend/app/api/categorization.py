@@ -18,9 +18,12 @@ from app.schemas.categorization import (
     CategorizerSettings,
     CategorizerTestRequest,
     CategorizerTestResult,
+    RulesForAcceptedResult,
     SuggestionCounts,
     SuggestionList,
     SuggestionRead,
+    SuggestionTransaction,
+    SuggestionTransactions,
 )
 from app.services import categorization_service
 
@@ -165,6 +168,39 @@ async def list_suggestions(
         )
     ).scalars().all()
     return SuggestionList(items=[SuggestionRead.model_validate(r) for r in rows], total=total)
+
+
+@router.get("/suggestions/{suggestion_id}/transactions", response_model=SuggestionTransactions)
+async def suggestion_transactions(
+    suggestion_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """The transactions a suggestion is about, so they can be inspected."""
+    suggestion = await _get_suggestion(session, suggestion_id, ctx.workspace.id)
+    rows, total = await categorization_service.suggestion_transactions(session, ctx.workspace.id, suggestion)
+    return SuggestionTransactions(
+        items=[
+            SuggestionTransaction(
+                id=tx.id, date=tx.date, description=tx.description, amount=tx.amount, currency=tx.currency,
+                amount_primary=tx.amount_primary, type=tx.type, account_name=account, category_id=tx.category_id,
+            )
+            for tx, account in rows
+        ],
+        total=total,
+    )
+
+
+@router.post("/rules-for-accepted", response_model=RulesForAcceptedResult)
+async def create_rules_for_accepted(
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Make rules for merchants accepted earlier without one."""
+    considered, created = await categorization_service.create_rules_for_accepted(
+        session, ctx.workspace.id, ctx.user_id
+    )
+    return RulesForAcceptedResult(considered=considered, created=created)
 
 
 @router.post("/suggestions/{suggestion_id}/accept", response_model=SuggestionRead)

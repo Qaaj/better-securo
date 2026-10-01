@@ -48,6 +48,7 @@ import type {
   CategorizerSettings,
   CategorizationJob,
   CategorizationSuggestion,
+  CategorizationSuggestionTransaction,
   ProjectedTransaction,
   TransactionCalendarResponse,
   Rule,
@@ -1079,6 +1080,14 @@ export const categorization = {
   },
   accept: async (id: string, categoryId?: string, createRule = false): Promise<CategorizationSuggestion> => {
     const { data } = await api.post(`/categorization/suggestions/${id}/accept`, { category_id: categoryId ?? null, create_rule: createRule })
+    return data
+  },
+  transactions: async (id: string): Promise<{ items: CategorizationSuggestionTransaction[]; total: number }> => {
+    const { data } = await api.get(`/categorization/suggestions/${id}/transactions`)
+    return data
+  },
+  createRulesForAccepted: async (): Promise<{ considered: number; created: number }> => {
+    const { data } = await api.post('/categorization/rules-for-accepted')
     return data
   },
   reject: async (id: string): Promise<CategorizationSuggestion> => {

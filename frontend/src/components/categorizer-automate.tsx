@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CategorySelect } from '@/components/category-select'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { CategorizationJob, CategorizationSuggestion, Category, CategoryGroup } from '@/types'
 
 const ACTIVE = new Set(['pending', 'running'])
@@ -215,6 +216,15 @@ function ReviewList({ job, canWrite }: { job: CategorizationJob; canWrite: boole
     onError: (err: unknown) => toast.error(extractApiError(err, t('common.error'))),
   })
 
+  const retroRules = useMutation({
+    mutationFn: () => api.createRulesForAccepted(),
+    onSuccess: (r) => {
+      toast.success(t('categories.automate.rulesForAcceptedDone', { created: r.created, considered: r.considered }))
+      queryClient.invalidateQueries({ queryKey: ['rules'] })
+    },
+    onError: (err: unknown) => toast.error(extractApiError(err, t('common.error'))),
+  })
+
   const items = suggestions?.items ?? []
   return (
     <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
@@ -231,6 +241,12 @@ function ReviewList({ job, canWrite }: { job: CategorizationJob; canWrite: boole
               <input type="checkbox" checked={createRules} onChange={(e) => changeCreateRules(e.target.checked)} className="size-4 accent-primary" />
               {t('categories.automate.createRules')}
             </label>
+            {job.counts.accepted > 0 && (
+              <Button type="button" size="sm" variant="ghost" onClick={() => retroRules.mutate()} disabled={retroRules.isPending} title={t('categories.automate.rulesForAcceptedHint')}>
+                {retroRules.isPending && <Loader2 size={14} className="animate-spin" />}
+                {t('categories.automate.rulesForAccepted')}
+              </Button>
+            )}
             <Button type="button" size="sm" variant="outline" onClick={() => acceptAll.mutate()} disabled={acceptAll.isPending}>
               {acceptAll.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
               {t('categories.automate.acceptHigh')}
@@ -284,6 +300,7 @@ function SuggestionRow({
 }) {
   const { t } = useTranslation()
   const [categoryEdit, setCategoryEdit] = useState<string | null>(null)
+  const [inspecting, setInspecting] = useState(false)
   const categoryId = categoryEdit ?? suggestion.suggested_category_id ?? ''
 
   const accept = useMutation({
@@ -302,13 +319,23 @@ function SuggestionRow({
       <div className="min-w-0 lg:flex-1">
         <p className="text-sm font-medium truncate">{suggestion.sample_description}</p>
         <p className="text-xs text-muted-foreground">
-          {t('categories.automate.rowMeta', { count: suggestion.tx_count, total: money(suggestion.total_amount_primary) })}
+          <button
+            type="button"
+            className="underline decoration-dotted underline-offset-2 hover:text-foreground"
+            onClick={() => setInspecting(true)}
+            title={t('categories.automate.inspect')}
+          >
+            {t('categories.automate.rowCount', { count: suggestion.tx_count })}
+          </button>
+          {' · '}
+          {money(suggestion.total_amount_primary)}
           {' · '}
           {t(`categories.automate.source.${suggestion.source}`)}
           {' · '}
           <span className={tone}>{t(`categories.automate.confidence.${suggestion.confidence}`)}</span>
         </p>
       </div>
+      {inspecting && <SuggestionTransactionsDialog suggestion={suggestion} onClose={() => setInspecting(false)} />}
       <div className="lg:w-64">
         <CategorySelect
           value={categoryId}
@@ -332,5 +359,61 @@ function SuggestionRow({
         </div>
       )}
     </li>
+  )
+}
+
+/** The transactions behind a suggestion, for checking before accepting. */
+function SuggestionTransactionsDialog({ suggestion, onClose }: { suggestion: CategorizationSuggestion; onClose: () => void }) {
+  const { t } = useTranslation()
+  const locale = useDisplayLocale()
+  const { mask } = usePrivacyMode()
+  const { data, isLoading } = useQuery({
+    queryKey: ['categorization', 'suggestion-transactions', suggestion.id],
+    queryFn: () => api.transactions(suggestion.id),
+    refetchOnWindowFocus: false,
+  })
+  const items = data?.items ?? []
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent className="sm:max-w-3xl max-h-[calc(100dvh-2rem)] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="truncate">{suggestion.sample_description}</DialogTitle>
+          <DialogDescription>{t('categories.automate.inspectDescription', { count: data?.total ?? suggestion.tx_count })}</DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-6"><Loader2 size={14} className="animate-spin" /> {t('common.loading')}</div>
+          ) : items.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6">{t('categories.automate.inspectEmpty')}</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-muted-foreground border-b border-border">
+                  <th className="text-left font-medium py-2 pr-3">{t('transactions.date')}</th>
+                  <th className="text-left font-medium py-2 pr-3">{t('transactions.description')}</th>
+                  <th className="text-left font-medium py-2 pr-3 hidden sm:table-cell">{t('transactions.account')}</th>
+                  <th className="text-right font-medium py-2">{t('transactions.amount')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((tx) => (
+                  <tr key={tx.id} className="border-b border-border last:border-0 align-top">
+                    <td className="py-2 pr-3 whitespace-nowrap text-muted-foreground">{new Date(tx.date).toLocaleDateString(locale)}</td>
+                    <td className="py-2 pr-3 break-words">{tx.description}</td>
+                    <td className="py-2 pr-3 hidden sm:table-cell text-muted-foreground">{tx.account_name}</td>
+                    <td className={cn('py-2 text-right whitespace-nowrap tabular-nums', tx.type === 'credit' ? 'text-emerald-600' : '')}>
+                      {mask(`${tx.type === 'credit' ? '+' : '−'}${formatCurrency(Number(tx.amount), tx.currency, locale)}`)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        {data && data.total > items.length && (
+          <p className="text-xs text-muted-foreground">{t('categories.automate.showing', { shown: items.length, total: data.total })}</p>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
