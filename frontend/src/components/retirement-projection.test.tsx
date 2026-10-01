@@ -4,6 +4,8 @@ import { RetirementProjection } from '@/components/retirement-projection'
 import { renderWithProviders } from '@/test/utils'
 import type { Asset, RecurringTransaction } from '@/types'
 
+vi.mock('@/lib/download', () => ({ downloadText: vi.fn(), printHtml: vi.fn() }))
+
 const items = [
   { id: 'rent', description: 'Rent', amount: 2000, currency: 'EUR', type: 'debit', frequency: 'monthly', is_active: true, amount_primary: null },
 ] as unknown as RecurringTransaction[]
@@ -148,4 +150,24 @@ it('keeps the inflation box for an extra income off while income is not indexed'
   expect(screen.getByRole('checkbox', { name: 'Rises with inflation' })).toBeEnabled()
   await user.click(screen.getByRole('checkbox', { name: /Income rises with inflation too/ }))
   expect(screen.getByRole('checkbox', { name: 'Rises with inflation' })).toBeDisabled()
+})
+
+it('exports the plan as Markdown and as a print-ready PDF page', async () => {
+  const { downloadText, printHtml } = await import('@/lib/download')
+  const { user } = renderWithProviders(<RetirementProjection {...props} />)
+
+  await user.click(screen.getByRole('button', { name: /Export/ }))
+  await user.click(screen.getByRole('menuitem', { name: 'Markdown (.md)' }))
+  expect(downloadText).toHaveBeenCalledTimes(1)
+  const [filename, text] = vi.mocked(downloadText).mock.calls[0]
+  expect(filename).toMatch(/^retirement-plan-\d{4}-\d{2}-\d{2}\.md$/)
+  expect(text).toContain('# Retirement plan')
+  expect(text).toContain('| ETF ')
+
+  await user.click(screen.getByRole('button', { name: /Export/ }))
+  await user.click(screen.getByRole('menuitem', { name: 'PDF (print)' }))
+  expect(printHtml).toHaveBeenCalledTimes(1)
+  const html = vi.mocked(printHtml).mock.calls[0][0]
+  expect(html).toContain('<svg')
+  expect(html).toContain('Year by year')
 })

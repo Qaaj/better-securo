@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Plus, Save, Trash2 } from 'lucide-react'
+import { Download, Plus, Save, Trash2 } from 'lucide-react'
 import { annualGrowthPercent, assetFixedMonthly, assetValue, computeRetirement, type IncomeLine, type OutgoingLine } from '@/lib/retirement'
 import {
   defaultDrawable,
@@ -11,6 +11,8 @@ import {
   type WhatIf,
 } from '@/lib/retirement-projection'
 import { formatCurrency } from '@/lib/format'
+import { downloadText, printHtml } from '@/lib/download'
+import { buildReport, describeWhatIf, reportToHtml, reportToMarkdown } from '@/lib/retirement-report'
 import { AssetsChart, AssetsTable, type ChartMode } from '@/components/retirement-projection-charts'
 import { cn } from '@/lib/utils'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
@@ -18,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { Asset, RecurringTransaction } from '@/types'
 
 /** An asset that exists only in the plan, e.g. "more bonds". */
@@ -182,6 +185,29 @@ export function RetirementProjection({
   const drawableIds = useMemo(() => new Set(projectionAssets.filter((a) => a.drawable).map((a) => a.id).concat('__cash__')), [projectionAssets])
 
   const hasWhatIfs = plan.whatIfs.length > 0
+
+  const makeReport = () => {
+    const fixedLines = [
+      ...summary.outgoing.filter((l) => !excluded.has(l.item.id) && flatSet.has(l.item.id)).map((l) => ({ label: l.item.description, monthly: l.monthly })),
+      ...summary.income.filter((l) => l.kind === 'recurring' && !excluded.has(l.id) && flatSet.has(l.id)).map((l) => ({ label: l.label, monthly: l.monthly })),
+      ...projectionAssets.filter((a) => a.fixedFlat && a.fixedMonthly).map((a) => ({ label: a.name, monthly: a.fixedMonthly ?? 0 })),
+    ]
+    return buildReport({
+      t: t as unknown as Parameters<typeof buildReport>[0]['t'],
+      currency,
+      locale,
+      now: new Date(),
+      assumptions: plan.assumptions,
+      whatIfs: plan.whatIfs,
+      scenario,
+      baseline,
+      assets: projectionAssets,
+      fixedLines,
+    })
+  }
+  const stamp = () => new Date().toISOString().slice(0, 10)
+  const exportMarkdown = () => downloadText(`retirement-plan-${stamp()}.md`, reportToMarkdown(makeReport()))
+  const exportPdf = () => printHtml(reportToHtml(makeReport()))
   const saveScenario = () => {
     const name = scenarioName.trim()
     if (!name) return
@@ -228,6 +254,17 @@ export function RetirementProjection({
           <Button type="button" size="sm" variant="outline" onClick={saveScenario} disabled={!scenarioName.trim()}>
             <Save size={14} /> {t('retirement.projection.save')}
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" size="sm" variant="outline">
+                <Download size={14} /> {t('retirement.projection.export')}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={exportPdf}>{t('retirement.projection.exportPdf')}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={exportMarkdown}>{t('retirement.projection.exportMarkdown')}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -742,12 +779,7 @@ function WhatIfs({
     setAmount('')
   }
 
-  const describe = (w: WhatIf) => {
-    if (w.kind === 'sell') return t('retirement.projection.describeSell', { year: thisYear + w.year, fees: w.feesPercent })
-    if (w.kind === 'spend') return t('retirement.projection.describeSpend', { amount: w.monthly, from: thisYear + w.fromYear }) + (w.inflates === false ? ` · ${t('retirement.projection.staysTheSame')}` : '')
-    if (w.kind === 'oneoff') return t('retirement.projection.describeOneoff', { amount: w.amount, year: thisYear + w.year })
-    return t('retirement.projection.describeMonthly', { amount: w.monthly, from: thisYear + w.fromYear, to: w.toYear !== undefined ? thisYear + w.toYear : t('retirement.projection.onwards') }) + (w.inflates === false ? ` · ${t('retirement.projection.staysTheSame')}` : '')
-  }
+  const describe = (w: WhatIf) => describeWhatIf(t as unknown as Parameters<typeof describeWhatIf>[0], w, thisYear)
 
   const field = 'h-8'
   return (
