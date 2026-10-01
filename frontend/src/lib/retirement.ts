@@ -22,7 +22,7 @@ export interface OutgoingLine {
 export interface RetirementSummary {
   /** Every income line, whether or not it is counted. */
   income: IncomeLine[]
-  /** Every active recurring debit. All of them count. */
+  /** Every active recurring debit, whether or not it is counted. */
   outgoing: OutgoingLine[]
   incomeMonthly: number
   outgoingMonthly: number
@@ -83,14 +83,14 @@ function assetIncomeLines(asset: Asset, displayCurrency: string): { lines: Incom
 /**
  * Passive income against outgoings. Income is every active recurring credit,
  * plus the modelled income and planned sales of every live asset, grouped or
- * not; any of it can be left out by id. Outgoings are every active recurring
- * debit.
+ * not. Outgoings are every active recurring debit. Any line can be left out of
+ * the totals by id (income line ids, or the recurring item's id).
  */
 export function computeRetirement(
   items: RecurringTransaction[],
   assets: Asset[],
   displayCurrency: string,
-  excludedIncomeIds: ReadonlySet<string>,
+  excludedIds: ReadonlySet<string>,
 ): RetirementSummary {
   const income: IncomeLine[] = []
   const outgoing: OutgoingLine[] = []
@@ -120,8 +120,10 @@ export function computeRetirement(
   income.sort((a, b) => b.monthly - a.monthly)
   outgoing.sort((a, b) => b.monthly - a.monthly)
 
-  const incomeMonthly = income.filter((l) => !excludedIncomeIds.has(l.id)).reduce((sum, l) => sum + l.monthly, 0)
-  const outgoingMonthly = outgoing.reduce((sum, l) => sum + l.monthly, 0)
+  const incomeMonthly = income.filter((l) => !excludedIds.has(l.id)).reduce((sum, l) => sum + l.monthly, 0)
+  const outgoingMonthly = outgoing
+    .filter((l) => !excludedIds.has(l.item.id))
+    .reduce((sum, l) => sum + l.monthly, 0)
   return {
     income,
     outgoing,

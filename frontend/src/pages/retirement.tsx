@@ -125,13 +125,15 @@ export default function RetirementPage() {
         <Card title={t('retirement.outgoingTitle')} subtitle={t('retirement.outgoingHint')}>
           <ul className="divide-y divide-border max-h-[32rem] overflow-y-auto">
             {summary.outgoing.map((line) => (
-              <li key={line.item.id} className="px-5 py-2.5 flex items-center justify-between gap-3 text-sm">
-                <span className="min-w-0">
-                  <span className="block truncate">{line.item.description}</span>
-                  <span className="block text-xs text-muted-foreground">{t(`recurring.${line.item.frequency}`)}</span>
-                </span>
-                <span className="shrink-0 tabular-nums">{money(line.monthly)}</span>
-              </li>
+              <ToggleRow
+                key={line.item.id}
+                label={line.item.description}
+                detail={t(`recurring.${line.item.frequency}`)}
+                amount={money(line.monthly)}
+                counted={!excluded.has(line.item.id)}
+                onToggle={() => toggle(line.item.id)}
+                ariaLabel={t('retirement.countOutgoing', { name: line.item.description })}
+              />
             ))}
           </ul>
         </Card>
@@ -182,20 +184,42 @@ function IncomeRow({
         ? t('retirement.assetFixed', { frequency: t(`recurring.${line.frequency}`) })
         : t('retirement.assetSale', { percent: line.asset?.sell_percent_per_year, value: money(line.asset?.current_value_primary ?? line.asset?.current_value ?? 0) })
   return (
+    <ToggleRow
+      label={line.label}
+      detail={detail}
+      amount={money(line.monthly)}
+      counted={counted}
+      onToggle={onToggle}
+      ariaLabel={t('retirement.countThis', { name: line.label })}
+    />
+  )
+}
+
+/** A line with a checkbox: unticked lines stay listed but drop out of the totals. */
+function ToggleRow({
+  label,
+  detail,
+  amount,
+  counted,
+  onToggle,
+  ariaLabel,
+}: {
+  label: string
+  detail: string
+  amount: string
+  counted: boolean
+  onToggle: () => void
+  ariaLabel: string
+}) {
+  return (
     <li className="px-5 py-2.5">
       <label className="flex items-center gap-3 text-sm cursor-pointer">
-        <input
-          type="checkbox"
-          checked={counted}
-          onChange={onToggle}
-          className="size-4 accent-primary shrink-0"
-          aria-label={t('retirement.countThis', { name: line.label })}
-        />
+        <input type="checkbox" checked={counted} onChange={onToggle} className="size-4 accent-primary shrink-0" aria-label={ariaLabel} />
         <span className={cn('min-w-0 flex-1', !counted && 'text-muted-foreground line-through')}>
-          <span className="block truncate">{line.label}</span>
+          <span className="block truncate">{label}</span>
           <span className="block text-xs text-muted-foreground no-underline">{detail}</span>
         </span>
-        <span className={cn('shrink-0 tabular-nums', !counted && 'text-muted-foreground')}>{money(line.monthly)}</span>
+        <span className={cn('shrink-0 tabular-nums', !counted && 'text-muted-foreground')}>{amount}</span>
       </label>
     </li>
   )

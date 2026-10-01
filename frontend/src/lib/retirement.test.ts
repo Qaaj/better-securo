@@ -60,6 +60,16 @@ describe('computeRetirement with recurring items', () => {
     expect(s.skipped).toBe(1)
   })
 
+  it('leaves an excluded outgoing out of the total but still lists it', () => {
+    const rent = item({ id: 'rent', type: 'credit', amount: 2000 })
+    const s = computeRetirement(
+      [rent, item({ id: 'a', amount: 1500 }), item({ id: 'b', amount: 500 })], [], 'EUR', new Set(['a']),
+    )
+    expect(s.outgoing).toHaveLength(2)
+    expect(s.outgoingMonthly).toBe(500)
+    expect(s.coverage).toBe(4)
+  })
+
   it('has no coverage without outgoings', () => {
     expect(computeRetirement([rent], [], 'EUR', new Set()).coverage).toBeNull()
   })
