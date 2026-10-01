@@ -212,10 +212,12 @@ async def import_transactions(
     if not account:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
 
+    report: dict = {}
     imported, skipped, excluded, import_log_id = await import_service.import_transactions(
         session, ctx.workspace.id, ctx.user_id, data.account_id, data.transactions, "import",
         filename=data.filename, detected_format=data.detected_format,
         detect_duplicates=data.detect_duplicates,
+        report=report,
     )
 
     return {
@@ -223,4 +225,5 @@ async def import_transactions(
         "skipped": skipped,
         "excluded": excluded,
         "import_log_id": str(import_log_id),
+        "transfers_paired": report.get("transfers_paired", 0),
     }

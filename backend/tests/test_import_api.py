@@ -545,3 +545,54 @@ async def test_import_uses_csv_category_when_no_rule_matches(
     )
     imported = result.scalar_one()
     assert imported.category_id == test_categories[0].id
+
+
+async def _second_account(session: AsyncSession, test_user, test_workspace, name: str) -> Account:
+    account = Account(
+        id=uuid.uuid4(), user_id=test_user.id, workspace_id=test_workspace.id,
+        name=name, type="checking", balance=0, currency="BRL",
+    )
+    session.add(account)
+    await session.commit()
+    return account
+
+
+@pytest.mark.asyncio
+async def test_importing_the_other_leg_pairs_a_transfer_between_two_accounts(
+    client: AsyncClient, auth_headers, session: AsyncSession, test_user, test_workspace, test_account
+):
+    other = await _second_account(session, test_user, test_workspace, "Savings")
+
+    def body(account, txn_type):
+        return {
+            "account_id": str(account.id),
+            "transactions": [{"description": "Move to savings", "amount": "500.00", "date": "2026-03-10", "type": txn_type}],
+            "filename": "x.csv", "detected_format": "csv",
+        }
+
+    first = await client.post("/api/transactions/import", headers=auth_headers, json=body(test_account, "debit"))
+    assert first.status_code == 201
+    assert first.json()["transfers_paired"] == 0  # nothing to pair with yet
+
+    second = await client.post("/api/transactions/import", headers=auth_headers, json=body(other, "credit"))
+    assert second.status_code == 201
+    assert second.json()["transfers_paired"] == 1
+
+    legs = (await session.execute(select(Transaction).where(Transaction.transfer_pair_id.is_not(None)))).scalars().all()
+    assert len(legs) == 2
+    assert legs[0].transfer_pair_id == legs[1].transfer_pair_id
+
+
+@pytest.mark.asyncio
+async def test_an_import_that_matches_nothing_pairs_nothing(
+    client: AsyncClient, auth_headers, test_account
+):
+    resp = await client.post(
+        "/api/transactions/import", headers=auth_headers,
+        json={
+            "account_id": str(test_account.id),
+            "transactions": [{"description": "Coffee", "amount": "3.50", "date": "2026-03-10", "type": "debit"}],
+            "filename": "x.csv", "detected_format": "csv",
+        },
+    )
+    assert resp.json()["transfers_paired"] == 0
