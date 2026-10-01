@@ -118,6 +118,7 @@
     "assets": "Activa",
     "payees": "Begunstigden",
     "reports": "Rapporten",
+    "retirement": "Retirement",
     "groupAnalysis": "Analyse",
     "groupSetup": "Instellen",
     "groupAccounts": "Rekeningen",
@@ -1318,6 +1319,24 @@
     "themeColor": "Thema kleur",
     "lightMode": "Lichte modus",
     "darkMode": "Donkere modus"
+  },
+  "retirement": {
+    "title": "Retirement",
+    "tileIncome": "Passive income",
+    "tileOutgoing": "Outgoing",
+    "tileCoverage": "Covered by income",
+    "tileSurplus": "Surplus",
+    "tileShortfall": "Shortfall",
+    "coverageHint": "Counted income as a share of outgoing",
+    "perYear": "{{amount}} a year",
+    "incomeTitle": "Income",
+    "incomeHint": "Every recurring credit is counted. Untick one to leave it out.",
+    "outgoingTitle": "Outgoing",
+    "outgoingHint": "Every recurring cost, as a monthly amount.",
+    "noIncome": "No recurring income yet.",
+    "goToRecurring": "Add one on the recurring page",
+    "countThis": "Count {{name}} as income",
+    "skipped": "{{count}} item(s) in another currency without a conversion are not counted"
   },
   "recurring": {
     "title": "Terugkerende transacties",

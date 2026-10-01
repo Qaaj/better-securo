@@ -1,7 +1,7 @@
 import type { RecurringTransaction } from '@/types'
 
 // How many times each frequency charges per year.
-const PER_YEAR: Record<string, number> = {
+export const PER_YEAR: Record<string, number> = {
   weekly: 52,
   biweekly: 26,
   monthly: 12,
@@ -24,7 +24,7 @@ export interface RecurringTotals {
 }
 
 /** The amount in the display currency, or null when it can't be known. */
-function inDisplayCurrency(rt: RecurringTransaction, displayCurrency: string): number | null {
+export function inDisplayCurrency(rt: RecurringTransaction, displayCurrency: string): number | null {
   if (rt.currency === displayCurrency) return Number(rt.amount)
   if (rt.amount_primary != null) return Number(rt.amount_primary)
   return null
