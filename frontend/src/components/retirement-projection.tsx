@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Plus, Save, Trash2 } from 'lucide-react'
-import { assetFixedMonthly, assetValue, computeRetirement } from '@/lib/retirement'
+import { annualGrowthPercent, assetFixedMonthly, assetValue, computeRetirement } from '@/lib/retirement'
 import {
   defaultDrawable,
   projectRetirement,
@@ -21,12 +21,15 @@ import type { Asset, RecurringTransaction } from '@/types'
 interface Plan {
   assumptions: Assumptions
   drawable: Record<string, boolean>
+  /** Growth a year the user typed for an asset, over the one its own rule gives. */
+  growth: Record<string, number>
   whatIfs: WhatIf[]
 }
 
 const DEFAULT_PLAN: Plan = {
-  assumptions: { horizonYears: 30, inflationPercent: 2, growthPercent: 3, propertyGrowthPercent: 2, incomeIndexed: true },
+  assumptions: { horizonYears: 30, inflationPercent: 2, incomeIndexed: true },
   drawable: {},
+  growth: {},
   whatIfs: [],
 }
 const PLAN_KEY = 'retirement:plan'
@@ -107,13 +110,14 @@ export function RetirementProjection({
         name: asset.name,
         value,
         drawable: plan.drawable[asset.id] ?? defaultDrawable(asset.type, value),
+        growthPercent: plan.growth[asset.id] ?? annualGrowthPercent(asset, value) ?? 0,
         yieldPercent: yielding ? asset.income_rate ?? undefined : undefined,
         fixedMonthly: rental ?? undefined,
         sellPercent: asset.sell_percent_per_year && !excluded.has(`asset:${asset.id}:sale`) ? asset.sell_percent_per_year : undefined,
       })
     }
     return list
-  }, [assets, currency, excluded, plan.drawable])
+  }, [assets, currency, excluded, plan.drawable, plan.growth])
 
   const base = { recurringIncomeMonthly, outgoingMonthly: summary.outgoingMonthly, assets: projectionAssets, assumptions: plan.assumptions }
   const baseline = useMemo(() => projectRetirement({ ...base, whatIfs: [] }), [base.recurringIncomeMonthly, base.outgoingMonthly, projectionAssets, plan.assumptions]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -228,7 +232,12 @@ export function RetirementProjection({
         </div>
 
         <Assumptions plan={plan} setAssumption={setAssumption} />
-        <SpendFrom assets={projectionAssets} money={money} onToggle={(id, value) => setPlan({ ...plan, drawable: { ...plan.drawable, [id]: value } })} />
+        <SpendFrom
+          assets={projectionAssets}
+          money={money}
+          onToggle={(id, value) => setPlan({ ...plan, drawable: { ...plan.drawable, [id]: value } })}
+          onGrowth={(id, value) => setPlan({ ...plan, growth: { ...plan.growth, [id]: value } })}
+        />
         <WhatIfs
           whatIfs={plan.whatIfs}
           assets={projectionAssets}
@@ -268,7 +277,7 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
 function Assumptions({ plan, setAssumption }: { plan: Plan; setAssumption: <K extends keyof Assumptions>(key: K, value: Assumptions[K]) => void }) {
   const { t } = useTranslation()
   const a = plan.assumptions
-  const number = (key: 'horizonYears' | 'inflationPercent' | 'growthPercent' | 'propertyGrowthPercent', label: string, suffix: string, min: number, max: number) => (
+  const number = (key: 'horizonYears' | 'inflationPercent', label: string, suffix: string, min: number, max: number) => (
     <div className="space-y-1.5">
       <Label className="text-xs">{label}</Label>
       <div className="relative">
@@ -294,8 +303,6 @@ function Assumptions({ plan, setAssumption }: { plan: Plan; setAssumption: <K ex
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {number('horizonYears', t('retirement.projection.horizon'), t('retirement.projection.yearsSuffix'), 5, 60)}
         {number('inflationPercent', t('retirement.projection.inflation'), '%', 0, 20)}
-        {number('growthPercent', t('retirement.projection.growth'), '%', -10, 30)}
-        {number('propertyGrowthPercent', t('retirement.projection.propertyGrowth'), '%', -10, 20)}
       </div>
       <label className="flex items-center gap-2 text-xs text-muted-foreground mt-3 cursor-pointer">
         <input type="checkbox" checked={a.incomeIndexed} onChange={(e) => setAssumption('incomeIndexed', e.target.checked)} className="size-4 accent-primary" />
@@ -305,21 +312,50 @@ function Assumptions({ plan, setAssumption }: { plan: Plan; setAssumption: <K ex
   )
 }
 
-function SpendFrom({ assets, money, onToggle }: { assets: ProjectionAsset[]; money: (v: number) => string; onToggle: (id: string, value: boolean) => void }) {
+function SpendFrom({
+  assets,
+  money,
+  onToggle,
+  onGrowth,
+}: {
+  assets: ProjectionAsset[]
+  money: (v: number) => string
+  onToggle: (id: string, value: boolean) => void
+  onGrowth: (id: string, value: number) => void
+}) {
   const { t } = useTranslation()
   const owned = assets.filter((a) => a.value > 0).sort((a, b) => b.value - a.value)
   return (
     <div>
       <p className="text-xs font-medium text-muted-foreground">{t('retirement.projection.spendFrom')}</p>
       <p className="text-[11px] text-muted-foreground mb-2">{t('retirement.projection.spendFromHint')}</p>
-      <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+      <ul className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-1">
         {owned.map((asset) => (
-          <li key={asset.id}>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={asset.drawable} onChange={(e) => onToggle(asset.id, e.target.checked)} className="size-4 accent-primary shrink-0" />
-              <span className={cn('min-w-0 flex-1 truncate', !asset.drawable && 'text-muted-foreground')}>{asset.name}</span>
-              <span className="shrink-0 tabular-nums text-xs text-muted-foreground">{money(asset.value)}</span>
-            </label>
+          <li key={asset.id} className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={asset.drawable}
+              onChange={(e) => onToggle(asset.id, e.target.checked)}
+              className="size-4 accent-primary shrink-0"
+              aria-label={t('retirement.projection.spendFromThis', { name: asset.name })}
+            />
+            <span className={cn('min-w-0 flex-1 truncate', !asset.drawable && 'text-muted-foreground')}>{asset.name}</span>
+            <span className="relative shrink-0">
+              <Input
+                type="number"
+                step="any"
+                value={Number((asset.growthPercent ?? 0).toFixed(2))}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value)
+                  if (!Number.isNaN(v)) onGrowth(asset.id, Math.min(100, Math.max(-100, v)))
+                }}
+                className="h-7 w-[4.5rem] pr-5 text-right text-xs"
+                aria-label={t('retirement.projection.growthOf', { name: asset.name })}
+                title={t('retirement.projection.growthPerYear')}
+              />
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">%</span>
+            </span>
+            <span className="shrink-0 w-24 text-right tabular-nums text-xs text-muted-foreground">{money(asset.value)}</span>
           </li>
         ))}
       </ul>

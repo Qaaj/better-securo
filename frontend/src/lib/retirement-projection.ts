@@ -6,8 +6,8 @@
  * is drawn pro rata from the drawable assets, a surplus is added to them, then
  * the assets grow. Runway is how long the drawable assets last.
  *
- * It is a planning aid, not a forecast: no taxes, no loan amortisation, one
- * growth rate for everything drawable.
+ * It is a planning aid, not a forecast: no taxes and no loan amortisation.
+ * Each asset grows at its own rate.
  */
 
 export interface ProjectionAsset {
@@ -23,15 +23,13 @@ export interface ProjectionAsset {
   fixedMonthly?: number
   /** % of the holding sold each year. */
   sellPercent?: number
+  /** The asset's own growth, % a year (0 when it has none). */
+  growthPercent?: number
 }
 
 export interface Assumptions {
   horizonYears: number
   inflationPercent: number
-  /** Growth of the drawable assets, % a year. */
-  growthPercent: number
-  /** Growth of everything else you own (property, vehicles), % a year. */
-  propertyGrowthPercent: number
   /** Whether income rises with inflation like outgoings do. */
   incomeIndexed: boolean
 }
@@ -83,8 +81,6 @@ function active(item: { fromYear: number; toYear?: number }, year: number): bool
 export function projectRetirement(input: ProjectionInput): Projection {
   const { assumptions: a } = input
   const inflation = a.inflationPercent / 100
-  const growth = a.growthPercent / 100
-  const propertyGrowth = a.propertyGrowthPercent / 100
 
   // Mutable working copy; surplus with nowhere to go collects in a cash bucket.
   const state = input.assets.map((asset) => ({ ...asset, held: true }))
@@ -153,7 +149,7 @@ export function projectRetirement(input: ProjectionInput): Projection {
 
     for (const h of holdings) {
       if (!h.held) continue
-      h.value *= 1 + (h.drawable ? growth : propertyGrowth)
+      h.value *= 1 + (h.growthPercent ?? 0) / 100
     }
 
     rows.push({

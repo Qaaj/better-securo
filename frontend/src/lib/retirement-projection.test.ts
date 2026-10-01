@@ -8,7 +8,7 @@ import {
   type WhatIf,
 } from './retirement-projection'
 
-const flat: Assumptions = { horizonYears: 20, inflationPercent: 0, growthPercent: 0, propertyGrowthPercent: 0, incomeIndexed: true }
+const flat: Assumptions = { horizonYears: 20, inflationPercent: 0, incomeIndexed: true }
 const pool = (value: number, extra: Partial<ProjectionAsset> = {}): ProjectionAsset => ({ id: 'p', name: 'pool', value, drawable: true, ...extra })
 
 type RunOver = Omit<Partial<ProjectionInput>, 'assumptions'> & { assumptions?: Partial<Assumptions> }
@@ -51,8 +51,8 @@ describe('projectRetirement', () => {
     expect(fixed.runwayYears).not.toBeNull()
   })
 
-  it('grows the drawable assets', () => {
-    const p = run({ assets: [pool(100_000)], assumptions: { growthPercent: 10, horizonYears: 2 } })
+  it('grows each asset at its own rate', () => {
+    const p = run({ assets: [pool(100_000, { growthPercent: 10 })], assumptions: { horizonYears: 2 } })
     expect(p.rows[1].drawable).toBeCloseTo(121_000)
   })
 
@@ -70,12 +70,20 @@ describe('projectRetirement', () => {
 
   it('keeps liabilities and non-drawable property out of the pool but in net worth', () => {
     const p = run({
-      assets: [pool(50_000), { id: 'h', name: 'house', value: 400_000, drawable: false }, { id: 'l', name: 'loan', value: -100_000, drawable: false }],
-      assumptions: { horizonYears: 1, propertyGrowthPercent: 10 },
+      assets: [pool(50_000), { id: 'h', name: 'house', value: 400_000, drawable: false, growthPercent: 10 }, { id: 'l', name: 'loan', value: -100_000, drawable: false }],
+      assumptions: { horizonYears: 1 },
     })
     expect(p.drawableNow).toBe(50_000)
     expect(p.netWorthNow).toBe(350_000)
     expect(p.rows[0].netWorth).toBeCloseTo(50_000 + 440_000 - 100_000)
+  })
+
+  it('grows assets at different rates side by side', () => {
+    const p = run({
+      assets: [pool(100_000, { growthPercent: 10 }), { id: 'q', name: 'q', value: 100_000, drawable: true, growthPercent: 0 }],
+      assumptions: { horizonYears: 1 },
+    })
+    expect(p.rows[0].drawable).toBeCloseTo(210_000)
   })
 
   it('collects a surplus in cash when there is nothing drawable', () => {

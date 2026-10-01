@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Asset, RecurringTransaction } from '@/types'
-import { computeRetirement, monthlyEquivalent } from './retirement'
+import { annualGrowthPercent, computeRetirement, monthlyEquivalent } from './retirement'
 
 function item(over: Partial<RecurringTransaction>): RecurringTransaction {
   return {
@@ -133,5 +133,20 @@ describe('computeRetirement with assets', () => {
   it('counts an asset without a usable value as skipped', () => {
     const s = computeRetirement([], [asset({ currency: 'CAD', current_value: null, current_value_primary: null, income_mode: 'yield', income_rate: 3 })], 'EUR', new Set())
     expect(s.skipped).toBe(1)
+  })
+})
+
+describe('annualGrowthPercent', () => {
+  it('reads a yearly percentage as it is and compounds a monthly one', () => {
+    expect(annualGrowthPercent(asset({ growth_type: 'percentage', growth_rate: 2.5, growth_frequency: 'yearly' }), 100)).toBeCloseTo(2.5)
+    expect(annualGrowthPercent(asset({ growth_type: 'percentage', growth_rate: 1, growth_frequency: 'monthly' }), 100)).toBeCloseTo(12.68, 1)
+  })
+
+  it('turns a fixed amount per period into a share of the value', () => {
+    expect(annualGrowthPercent(asset({ growth_type: 'absolute', growth_rate: 1000, growth_frequency: 'yearly' }), 100_000)).toBeCloseTo(1)
+  })
+
+  it('is null for an asset without a growth rule', () => {
+    expect(annualGrowthPercent(asset({ growth_type: null, growth_rate: null, growth_frequency: null }), 100)).toBeNull()
   })
 })
