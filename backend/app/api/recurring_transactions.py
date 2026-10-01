@@ -44,6 +44,25 @@ async def suggest_recurring_from_transaction(
     return suggestion
 
 
+@router.post("/{recurring_id}/link/{transaction_id}", response_model=RecurringTransactionRead)
+async def link_transaction_to_recurring(
+    recurring_id: uuid.UUID,
+    transaction_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Mark a transaction as an occurrence of an existing recurring item."""
+    try:
+        recurring = await recurring_transaction_service.link_transaction(
+            session, recurring_id, transaction_id, ctx.workspace.id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if recurring is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurring or transaction not found")
+    return recurring
+
+
 @router.post("", response_model=RecurringTransactionRead, status_code=status.HTTP_201_CREATED)
 async def create_recurring_transaction(
     data: RecurringTransactionCreate,

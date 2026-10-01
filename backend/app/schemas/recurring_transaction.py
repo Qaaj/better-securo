@@ -30,6 +30,20 @@ class RecurringTransactionCreate(BaseModel):
     source_transaction_id: Optional[uuid.UUID] = None
 
 
+class ExistingRecurringMatch(BaseModel):
+    """An existing, still-unlinked recurring item whose amount is close."""
+
+    id: uuid.UUID
+    description: str
+    amount: Decimal
+    currency: str
+    amount_primary: Optional[float] = None
+    frequency: str
+    next_occurrence: _Date
+    difference_pct: float
+    same_name: bool
+
+
 class RecurringSuggestionRead(BaseModel):
     match_basis: Literal["amount_and_name", "name", "none"]
     frequency: Optional[RecurringFrequency] = None
@@ -43,6 +57,8 @@ class RecurringSuggestionRead(BaseModel):
     day_of_month: Optional[int] = None
     next_occurrence: Optional[_Date] = None
     dates: list[_Date] = []
+    # Existing recurring items that might already be this one.
+    existing_matches: list[ExistingRecurringMatch] = []
 
 
 class RecurringTransactionUpdate(BaseModel):

@@ -24,14 +24,19 @@ from datetime import date
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.recurring_transaction import RecurringTransaction
 from app.models.transaction import Transaction
 from app.services.recurring_transaction_service import _advance_date
 
 _WORD = re.compile(r"[^\W\d_]{2,}", re.UNICODE)
 _MAX_CANDIDATES = 500
+# How far apart (as a share of the larger amount) two amounts may be and still
+# count as "close" when looking for an existing recurring item.
+_EXISTING_TOLERANCE = 0.15
+_MAX_EXISTING = 3
 
 # frequency -> (typical gap in days, tolerance in days)
 _PERIODS: dict[str, tuple[int, int]] = {
@@ -69,6 +74,7 @@ class RecurringSuggestion:
     day_of_month: Optional[int] = None
     next_occurrence: Optional[date] = None
     dates: list[date] = field(default_factory=list)
+    existing_matches: list[dict] = field(default_factory=list)
 
 
 def infer_frequency(dates: list[date]) -> tuple[Optional[str], str, Optional[int]]:
@@ -141,7 +147,63 @@ def _build(basis: str, matches: list[Match], tx: Transaction) -> RecurringSugges
     return suggestion
 
 
-async def suggest_for_transaction(
+def _primary_amount(amount: Decimal, amount_primary) -> Decimal:
+    """The amount in the primary currency, falling back to the raw amount."""
+    if amount_primary is not None:
+        return Decimal(str(amount_primary))
+    return amount
+
+
+async def find_existing_recurring(
+    session: AsyncSession, workspace_id: uuid.UUID, tx: Transaction
+) -> list[dict]:
+    """Active, same-direction recurring items nothing is linked to yet whose
+    amount is within the tolerance of this transaction's, closest first.
+
+    Amounts are compared in the primary currency so a USD bill and its EUR
+    charge still line up."""
+    linked = exists().where(Transaction.recurring_transaction_id == RecurringTransaction.id)
+    rows = (
+        await session.execute(
+            select(RecurringTransaction).where(
+                RecurringTransaction.workspace_id == workspace_id,
+                RecurringTransaction.is_active.is_(True),
+                RecurringTransaction.type == tx.type,
+                ~linked,
+            )
+        )
+    ).scalars().all()
+
+    tx_amount = _primary_amount(tx.amount, tx.amount_primary)
+    tx_words = set(name_key(tx.description))
+    found: list[dict] = []
+    for rt in rows:
+        rt_amount = _primary_amount(rt.amount, rt.amount_primary)
+        larger = max(tx_amount, rt_amount)
+        if larger == 0:
+            continue
+        difference = abs(tx_amount - rt_amount) / larger
+        if difference > Decimal(str(_EXISTING_TOLERANCE)):
+            continue
+        found.append(
+            {
+                "id": rt.id,
+                "description": rt.description,
+                "amount": rt.amount,
+                "currency": rt.currency,
+                "amount_primary": float(rt.amount_primary) if rt.amount_primary is not None else None,
+                "frequency": rt.frequency,
+                "next_occurrence": rt.next_occurrence,
+                "difference_pct": round(float(difference) * 100, 1),
+                "same_name": bool(tx_words & set(name_key(rt.description))),
+            }
+        )
+    # A shared name outranks a slightly closer amount.
+    found.sort(key=lambda m: (not m["same_name"], m["difference_pct"]))
+    return found[:_MAX_EXISTING]
+
+
+async def _suggest(
     session: AsyncSession, workspace_id: uuid.UUID, transaction_id: uuid.UUID
 ) -> Optional[RecurringSuggestion]:
     """None when the transaction is not in the workspace."""
@@ -187,4 +249,18 @@ async def suggest_for_transaction(
     suggestion.frequency = None
     suggestion.confidence = "none"
     suggestion.next_occurrence = None
+    return suggestion
+
+
+async def suggest_for_transaction(
+    session: AsyncSession, workspace_id: uuid.UUID, transaction_id: uuid.UUID
+) -> Optional[RecurringSuggestion]:
+    """None when the transaction is not in the workspace."""
+    suggestion = await _suggest(session, workspace_id, transaction_id)
+    if suggestion is None:
+        return None
+    tx = (
+        await session.execute(select(Transaction).where(Transaction.id == transaction_id))
+    ).scalar_one()
+    suggestion.existing_matches = await find_existing_recurring(session, workspace_id, tx)
     return suggestion

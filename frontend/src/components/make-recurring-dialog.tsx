@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label'
 import { DatePickerInput } from '@/components/ui/date-picker-input'
 import { CategorySelect } from '@/components/category-select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import type { RecurringSuggestion, RecurringTransaction, Transaction } from '@/types'
+import type { ExistingRecurringMatch, RecurringSuggestion, RecurringTransaction, Transaction } from '@/types'
 
 const FREQUENCIES: RecurringTransaction['frequency'][] = ['monthly', 'yearly', 'quarterly', 'semiannual', 'biweekly', 'weekly']
 const WITH_DAY_OF_MONTH = new Set(['monthly', 'quarterly', 'semiannual'])
@@ -91,6 +91,19 @@ export function MakeRecurringDialog({
     onError: (err: unknown) => toast.error(extractApiError(err, t('common.error'))),
   })
 
+  const linkMutation = useMutation({
+    mutationFn: (recurringId: string) => recurringApi.linkTransaction(recurringId, transaction.id),
+    onSuccess: () => {
+      invalidateFinancialQueries(queryClient)
+      queryClient.invalidateQueries({ queryKey: ['recurring'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      toast.success(t('recurring.linked'))
+      onCreated?.()
+      onClose()
+    },
+    onError: (err: unknown) => toast.error(extractApiError(err, t('common.error'))),
+  })
+
   const selectClass = 'w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary'
 
   return (
@@ -110,6 +123,15 @@ export function MakeRecurringDialog({
           currency={transaction.currency}
           locale={locale}
         />
+
+        {(suggestion?.existing_matches.length ?? 0) > 0 && (
+          <ExistingMatches
+            matches={suggestion!.existing_matches}
+            pendingId={linkMutation.isPending ? (linkMutation.variables ?? null) : null}
+            onLink={(id) => linkMutation.mutate(id)}
+            locale={locale}
+          />
+        )}
 
         <form
           className="space-y-4"
@@ -168,6 +190,51 @@ export function MakeRecurringDialog({
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function ExistingMatches({
+  matches,
+  pendingId,
+  onLink,
+  locale,
+}: {
+  matches: ExistingRecurringMatch[]
+  pendingId: string | null
+  onLink: (id: string) => void
+  locale: string
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="text-sm bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2 space-y-2">
+      <p className="font-medium text-amber-900 dark:text-amber-100">{t('recurring.existingTitle')}</p>
+      <ul className="space-y-1.5">
+        {matches.map((m) => (
+          <li key={m.id} className="flex items-center justify-between gap-3">
+            <span className="min-w-0">
+              <span className="block truncate font-medium">{m.description}</span>
+              <span className="block text-xs text-muted-foreground">
+                {formatCurrency(Number(m.amount), m.currency, locale)} · {t(`recurring.${m.frequency}`).toLowerCase()}
+                {' · '}{t('recurring.existingDifference', { pct: m.difference_pct })}
+                {m.same_name ? ` · ${t('recurring.existingSameName')}` : ''}
+              </span>
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              disabled={pendingId !== null}
+              onClick={() => onLink(m.id)}
+            >
+              {pendingId === m.id && <Loader2 size={12} className="animate-spin" />}
+              {t('recurring.existingLink')}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted-foreground">{t('recurring.existingHint')}</p>
+    </div>
   )
 }
 

@@ -167,3 +167,61 @@ async def test_name_pass_wins_when_the_amount_pass_is_thin(client, auth_headers,
     assert body["match_basis"] == "name"
     assert body["occurrences"] == 6
     assert body["confidence"] == "high"
+
+
+async def _make_recurring(client, headers, account, description, amount, **extra):
+    payload = {
+        "description": description, "amount": amount, "currency": "BRL", "type": "debit",
+        "frequency": "monthly", "start_date": "2026-03-10", "account_id": str(account.id), **extra,
+    }
+    resp = await client.post("/api/recurring-transactions", json=payload, headers=headers)
+    assert resp.status_code == 201
+    return resp.json()
+
+
+@pytest.mark.asyncio
+async def test_proposes_unlinked_recurring_items_with_a_close_amount(
+    client, auth_headers, session, test_user, test_workspace, test_account
+):
+    close = await _make_recurring(client, auth_headers, test_account, "Apple One", 35.0)
+    await _make_recurring(client, auth_headers, test_account, "Way Off", 500.0)
+    tx = await _add(session, test_user, test_workspace, test_account, "APPLE.COM/BILL", "34.50", date(2026, 4, 10))
+
+    body = (await client.get(f"/api/recurring-transactions/suggestion/{tx.id}", headers=auth_headers)).json()
+    ids = [m["id"] for m in body["existing_matches"]]
+    assert ids == [close["id"]]
+    assert body["existing_matches"][0]["difference_pct"] == pytest.approx(1.4, abs=0.1)
+
+
+@pytest.mark.asyncio
+async def test_a_linked_recurring_item_is_not_proposed(
+    client, auth_headers, session, test_user, test_workspace, test_account
+):
+    rec = await _make_recurring(client, auth_headers, test_account, "Gym", 30.0)
+    first = await _add(session, test_user, test_workspace, test_account, "Gym", "30.00", date(2026, 3, 10))
+    link = await client.post(f"/api/recurring-transactions/{rec['id']}/link/{first.id}", headers=auth_headers)
+    assert link.status_code == 200
+
+    other = await _add(session, test_user, test_workspace, test_account, "Gym again", "30.00", date(2026, 4, 10))
+    body = (await client.get(f"/api/recurring-transactions/suggestion/{other.id}", headers=auth_headers)).json()
+    assert body["existing_matches"] == []
+
+
+@pytest.mark.asyncio
+async def test_linking_moves_the_schedule_past_the_transaction(
+    client, auth_headers, session, test_user, test_workspace, test_account
+):
+    rec = await _make_recurring(client, auth_headers, test_account, "Rent", 800.0, start_date="2026-03-01")
+    tx = await _add(session, test_user, test_workspace, test_account, "Rent", "800.00", date(2026, 5, 2))
+    resp = await client.post(f"/api/recurring-transactions/{rec['id']}/link/{tx.id}", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["next_occurrence"] == "2026-06-01"
+    await session.refresh(tx)
+    assert str(tx.recurring_transaction_id) == rec["id"]
+
+    again = await client.post(f"/api/recurring-transactions/{rec['id']}/link/{tx.id}", headers=auth_headers)
+    assert again.status_code == 400
+    missing = await client.post(
+        f"/api/recurring-transactions/{rec['id']}/link/00000000-0000-0000-0000-000000000000", headers=auth_headers
+    )
+    assert missing.status_code == 404

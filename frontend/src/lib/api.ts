@@ -1058,6 +1058,10 @@ export const recurring = {
     const { data } = await api.post('/recurring-transactions', rt)
     return data
   },
+  linkTransaction: async (recurringId: string, transactionId: string): Promise<RecurringTransaction> => {
+    const { data } = await api.post(`/recurring-transactions/${recurringId}/link/${transactionId}`)
+    return data
+  },
   suggestion: async (transactionId: string): Promise<RecurringSuggestion> => {
     const { data } = await api.get(`/recurring-transactions/suggestion/${transactionId}`)
     return data
