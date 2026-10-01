@@ -5,7 +5,7 @@ import csv
 import io
 from collections import defaultdict
 
-from .common import ConvertedFile, ParseError, clean, dedupe_id, short_hash
+from .common import ConvertedFile, ParseError, dedupe_id, short_hash
 
 REQUIRED = {"Completed Date", "Description", "Amount", "Fee", "Currency", "State"}
 

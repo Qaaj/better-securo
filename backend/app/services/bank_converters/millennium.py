@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import csv
 
-from .common import ConvertedFile, ParseError, clean, decode_lines, dedupe_id, short_hash
+from .common import ConvertedFile, ParseError, decode_lines, dedupe_id, short_hash
 
 
 def _looks_like_millennium(lines: list[str]) -> bool:

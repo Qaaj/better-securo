@@ -484,6 +484,26 @@ CSV_MAPPABLE_FIELDS = (
 )
 
 
+# Securo field -> column of the CSV the bank converters emit. The external id
+# has to be mapped explicitly (see parse_csv), the rest is auto-detected.
+BANK_CSV_COLUMN_MAPPING = {"external_id": "transaction_id", "notes": "notes"}
+
+
+def convert_bank_csv(content: bytes, filename: str):
+    """Recognise a known bank export and convert it to Securo's CSV layout.
+
+    Returns (bank, converted_files) — one file per account/currency in the
+    export — or None when the file is not a supported bank export.
+    """
+    from app.services.bank_converters.detect import CONVERTERS, detect_bank
+
+    bank = detect_bank(content)
+    if bank is None:
+        return None
+    base = filename.rsplit(".", 1)[0] if filename else bank
+    return bank, CONVERTERS[bank].convert(content, base)
+
+
 def _sniff_csv_dialect(text: str):
     """Detect the CSV dialect (delimiter/quoting), falling back to comma."""
     try:

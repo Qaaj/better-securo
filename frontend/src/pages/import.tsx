@@ -9,7 +9,7 @@ import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import type { ImportPreviewTransaction, ImportReviewTransaction, FailedRow } from '@/types'
+import type { ImportPreviewResponse, ImportPreviewTransaction, ImportReviewTransaction } from '@/types'
 import { Upload, FileText, X, CheckCircle2, AlertCircle, Settings2, Download } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { PageHeader } from '@/components/page-header'
@@ -59,7 +59,7 @@ function TransactionImportPanel() {
   const dateLocale = useDateLocale()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [previewData, setPreviewData] = useState<{ transactions: ImportPreviewTransaction[]; detected_format: string; csv_columns?: string[]; parse_error?: string | null; failed_rows?: FailedRow[] } | null>(null)
+  const [previewData, setPreviewData] = useState<ImportPreviewResponse | null>(null)
   const [reviewTransactions, setReviewTransactions] = useState<ImportReviewTransaction[]>([])
   const [selectedAccount, setSelectedAccount] = useState('')
   const [dragOver, setDragOver] = useState(false)
@@ -98,7 +98,7 @@ function TransactionImportPanel() {
   })
 
   const previewMutation = useMutation({
-    mutationFn: ({ file, options }: { file: File; options?: { date_format?: string; flip_amount?: boolean; inflow_column?: string; outflow_column?: string; column_mapping?: Record<string, string> } }) =>
+    mutationFn: ({ file, options }: { file: File; options?: { date_format?: string; flip_amount?: boolean; inflow_column?: string; outflow_column?: string; column_mapping?: Record<string, string>; source?: string } }) =>
       transactionsApi.previewImport(file, options),
     onSuccess: (data) => {
       setPreviewData(data)
@@ -218,6 +218,11 @@ function TransactionImportPanel() {
     previewMutation.mutate({ file: currentFile, options })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentFile, csvDateFormat, csvFlipAmount, csvSplitColumns, csvInflowColumn, csvOutflowColumn, csvColumnMapping])
+
+  function handleSourceChange(source: string) {
+    if (!currentFile) return
+    previewMutation.mutate({ file: currentFile, options: { source } })
+  }
 
   const handleMappingChange = useCallback((field: string, column: string) => {
     setCsvColumnMapping(prev => {
@@ -392,8 +397,44 @@ function TransactionImportPanel() {
             </div>
           </div>
 
+          {/* Recognised bank export */}
+          {previewData.detected_bank && (
+            <div className="px-4 sm:px-5 py-4 border-b border-border bg-muted/30 space-y-3">
+              <div className="flex items-center gap-2 text-xs text-emerald-700">
+                <CheckCircle2 size={14} />
+                {t('import.bankDetected', { bank: previewData.detected_bank.charAt(0).toUpperCase() + previewData.detected_bank.slice(1) })}
+              </div>
+              {(previewData.sources?.length ?? 0) > 1 && (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                  <Label className="text-sm text-muted-foreground whitespace-nowrap shrink-0">
+                    {t('import.bankSource')}
+                  </Label>
+                  <select
+                    className="flex-1 border border-border rounded-md px-3 py-2 text-sm bg-card focus:outline-none focus-visible:ring-ring/30 focus-visible:ring-[2px]"
+                    value={previewData.selected_source ?? ''}
+                    onChange={(e) => handleSourceChange(e.target.value)}
+                  >
+                    {previewData.sources!.map((src) => (
+                      <option key={src.name} value={src.name}>
+                        {src.name.replace(/\.csv$/i, '')} — {t('import.bankSourceOption', { currency: src.currency, count: src.row_count })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {(previewData.warnings?.length ?? 0) > 0 && (
+                <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
+                  <p className="font-medium mb-1">{t('import.bankWarningsTitle')}</p>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    {previewData.warnings!.map((w) => <li key={w}>{w}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* CSV/QIF Options */}
-          {(isCsvFile || isQifFile) && previewData && (
+          {(isCsvFile || isQifFile) && previewData && !previewData.detected_bank && (
             <div className="px-5 py-4 border-b border-border bg-muted/30">
               <div className="flex items-center gap-2 mb-3">
                 <Settings2 size={14} className="text-muted-foreground" />
