@@ -15,8 +15,6 @@ const calendarQueryKeys = new Set([
   'recurring',
   'dashboard',
   'reports',
-  'budgets',
-  'goals',
   'assets',
   'asset-values',
   'asset-trend',

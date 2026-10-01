@@ -39,10 +39,9 @@ import { PayeeSelect } from '@/components/payee-select'
 import { RuleDialog, type RuleDialogInitialData } from '@/components/rule-dialog'
 import { TransactionAttachments } from '@/components/transaction-attachments'
 import type { AttachmentPreview } from '@/components/transaction-attachments'
-import { TransactionSplitsSection } from '@/components/transaction-splits-section'
 import { buildInstallmentSeriesInput, hasNonStatusChange, isManualInstallmentSeriesRow } from '@/lib/installment-series'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
-import type { Transaction, RecurringTransaction, TransactionSplitsInput, TransactionEditPayload, InstallmentSeriesInput, TransactionApplyScope, CategoryGroup, Category, Rule, RuleCondition, RuleConditionNode } from '@/types'
+import type { Transaction, RecurringTransaction, TransactionEditPayload, InstallmentSeriesInput, TransactionApplyScope, CategoryGroup, Category, Rule, RuleCondition, RuleConditionNode } from '@/types'
 import { toast } from 'sonner'
 
 export type SaveAction = 'save' | 'saveAndNew' | 'saveAndDuplicate'
@@ -481,30 +480,6 @@ function TransactionForm({
   const [isInstallment, setIsInstallment] = useState(false)
   const [installmentCount, setInstallmentCount] = useState('2')
   const [installmentFrequency, setInstallmentFrequency] = useState<RecurringTransaction['frequency']>('monthly')
-  // Optional split-with-group payload. `null` = leave splits as-is on
-  // update, or no splits on create. The dedicated section component
-  // owns its own UI state and surfaces a normalized payload here.
-  // Seeded from the transaction's existing splits so the edit dialog
-  // round-trips them rather than appearing empty.
-  const [splitsValid, setSplitsValid] = useState(true)
-  const [splits, setSplits] = useState<TransactionSplitsInput | null>(() => {
-    const existing = (seed as Transaction | null | undefined)?.splits
-    if (!existing || existing.length === 0) return null
-    return {
-      share_type: (existing[0].share_type as TransactionSplitsInput['share_type']) ?? 'equal',
-      splits: existing.map((s) => ({
-        group_member_id: s.group_member_id,
-        share_amount: s.share_amount,
-        share_pct: s.share_pct,
-      })),
-    }
-  })
-  // Captured once at mount so we know whether to send an explicit clear
-  // payload when the user toggles split off on a previously-split tx.
-  const [hadInitialSplits] = useState<boolean>(() => {
-    const existing = (seed as Transaction | null | undefined)?.splits
-    return !!(existing && existing.length > 0)
-  })
   const isCreating = !transaction
   const showConversion = currency !== userCurrency && !isSynced
   // Privacy mode hides monetary values across the app, but the edit modal
@@ -790,15 +765,6 @@ function TransactionForm({
         const overridePayload: Partial<Transaction> = isCcSelected
           ? { effective_bill_date: effectiveBillDate || null }
           : {}
-        // Splits ride along on the same payload — the backend treats a
-        // missing `splits` field as untouched and a present payload as
-        // full replacement. To clear existing splits when the user
-        // toggles off, send an explicit empty payload.
-        const splitsPayload: { splits?: TransactionSplitsInput } = splits
-          ? { splits }
-          : hadInitialSplits
-            ? { splits: { share_type: 'equal', splits: [] } }
-            : {}
         const pnlExclusionPayload = transaction
           ? { exclude_from_pnl: excludeFromReports }
           : {}
@@ -810,7 +776,6 @@ function TransactionForm({
               is_ignored: isIgnored,
               ...pnlExclusionPayload,
               ...overridePayload,
-              ...splitsPayload,
             } as TransactionEditPayload
           : {
               description,
@@ -829,7 +794,6 @@ function TransactionForm({
               status,
               ...fxFields,
               ...overridePayload,
-              ...splitsPayload,
             } as TransactionEditPayload
         const recurringData = isCreating && isRecurring
           ? { frequency, end_date: endDate || undefined }
@@ -846,7 +810,6 @@ function TransactionForm({
               currency,
               notes,
               fxFields,
-              splits,
               installmentCount,
               installmentFrequency,
               status,
@@ -1229,20 +1192,6 @@ function TransactionForm({
         )
       })()}
 
-      {/* A settlement-sourced transaction *is* the movement clearing a
-          group debt; splitting it would create circular accounting
-          (the share would settle a debt that this debit is already
-          settling). Hide the section entirely in that case. */}
-      {transaction?.source !== 'settlement' && (
-        <TransactionSplitsSection
-          amount={parseAmountInput(amount, displayLocale) ?? 0}
-          currency={currency}
-          value={splits}
-          onChange={setSplits}
-          onValidityChange={setSplitsValid}
-        />
-      )}
-
       {!isCreating && transaction ? (
         <TransactionAttachments
           transactionId={transaction.id}
@@ -1423,7 +1372,7 @@ function TransactionForm({
             <div className="inline-flex">
               <Button
                 type="submit"
-                disabled={loading || !splitsValid}
+                disabled={loading}
                 className="rounded-r-none whitespace-nowrap text-xs sm:text-sm h-8 sm:h-9"
               >
                 {loading ? t('common.loading') : t('common.save')}
@@ -1432,7 +1381,7 @@ function TransactionForm({
                 <DropdownMenuTrigger asChild>
                   <Button
                     type="button"
-                    disabled={loading || !splitsValid}
+                    disabled={loading}
                     aria-label={t('transactions.moreSaveOptions')}
                     className="rounded-l-none border-l border-l-primary-foreground/20 px-1.5 sm:px-2 has-[>svg]:px-1.5 sm:has-[>svg]:px-2 h-8 sm:h-9"
                   >
@@ -1450,7 +1399,7 @@ function TransactionForm({
               </DropdownMenu>
             </div>
           ) : (
-            <Button type="submit" disabled={loading || !splitsValid} className="whitespace-nowrap text-xs sm:text-sm h-8 sm:h-9">
+            <Button type="submit" disabled={loading} className="whitespace-nowrap text-xs sm:text-sm h-8 sm:h-9">
               {loading ? t('common.loading') : t('common.save')}
             </Button>
           )}

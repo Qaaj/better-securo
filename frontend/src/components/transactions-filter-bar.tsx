@@ -15,7 +15,6 @@ import {
   Search,
   Store,
   Tag,
-  Users,
   Wallet,
   X,
 } from 'lucide-react'
@@ -49,7 +48,7 @@ import {
   MobileTransactionsFilterMenu,
   type MobileFilterView,
 } from '@/components/mobile-transactions-filter-menu'
-import type { Account, Category, CategoryGroup, Group, Payee } from '@/types'
+import type { Account, Category, CategoryGroup, Payee } from '@/types'
 
 interface TransactionsFilterBarProps {
   searchInput: string
@@ -64,8 +63,6 @@ interface TransactionsFilterBarProps {
   onUncategorizedChange: (value: boolean) => void
   filterPayee: string
   onPayeeChange: (value: string) => void
-  filterGroupId: string
-  onGroupIdChange: (value: string) => void
   filterType: string
   onTypeChange: (value: string) => void
   filterStatus: string
@@ -87,7 +84,6 @@ interface TransactionsFilterBarProps {
   referenceCategories?: Category[]
   categoryGroups: CategoryGroup[]
   payees: Payee[]
-  groups: Group[]
 }
 
 function toggleInArray(arr: string[], id: string): string[] {
@@ -107,8 +103,6 @@ export function TransactionsFilterBar({
   onUncategorizedChange,
   filterPayee,
   onPayeeChange,
-  filterGroupId,
-  onGroupIdChange,
   filterType,
   onTypeChange,
   filterStatus,
@@ -127,7 +121,6 @@ export function TransactionsFilterBar({
   referenceCategories,
   categoryGroups,
   payees,
-  groups,
 }: TransactionsFilterBarProps) {
   const { t, i18n } = useTranslation()
   const locale = useDisplayLocale()
@@ -196,17 +189,11 @@ export function TransactionsFilterBar({
     [payees, filterPayee],
   )
 
-  const selectedGroup = useMemo(
-    () => groups.find((g) => g.id === filterGroupId),
-    [groups, filterGroupId],
-  )
-
   const hasAnyFilter =
     filterAccountIds.length > 0 ||
     filterCategoryIds.length > 0 ||
     filterUncategorized ||
     !!filterPayee ||
-    !!filterGroupId ||
     !!filterType ||
     !!filterStatus ||
     hideIgnored ||
@@ -412,12 +399,10 @@ export function TransactionsFilterBar({
                 categories={categories}
                 categoryGroups={categoryGroups}
                 payees={payees}
-                groups={groups}
                 accountIds={filterAccountIds}
                 categoryIds={filterCategoryIds}
                 uncategorized={filterUncategorized}
                 payeeId={filterPayee}
-                groupId={filterGroupId}
                 type={filterType}
                 from={filterFrom}
                 to={filterTo}
@@ -431,7 +416,6 @@ export function TransactionsFilterBar({
                   account: accountSummary,
                   category: categorySummary,
                   payee: selectedPayee?.name,
-                  group: selectedGroup?.name,
                   type: typeLabel,
                   status: statusLabel,
                   ignored: hideIgnored ? t('transactions.ignoredHide') : undefined,
@@ -444,7 +428,6 @@ export function TransactionsFilterBar({
                 onCategoryIdsChange={onCategoryIdsChange}
                 onUncategorizedChange={onUncategorizedChange}
                 onPayeeChange={onPayeeChange}
-                onGroupIdChange={onGroupIdChange}
                 onTypeChange={onTypeChange}
                 status={filterStatus}
                 onStatusChange={onStatusChange}
@@ -656,64 +639,6 @@ export function TransactionsFilterBar({
                               {p.name}
                             </span>
                             {filterPayee === p.id && (
-                              <Check size={13} className="text-primary" />
-                            )}
-                          </DropdownMenuItem>
-                        ))
-                      )}
-                    </DropdownMenuSubContent>
-                  </DropdownMenuPortal>
-                </DropdownMenuSub>
-
-                {/* Group submenu (single) */}
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger className="gap-2 text-[13px]">
-                    <Users size={14} className="text-muted-foreground" />
-                    <span className="flex-1">{t('splitGroups.group')}</span>
-                    {selectedGroup && (
-                      <span className="max-w-[90px] truncate text-[11px] text-muted-foreground">
-                        {selectedGroup.name}
-                      </span>
-                    )}
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuPortal>
-                    <DropdownMenuSubContent
-                      sideOffset={8}
-                      className="max-h-[320px] w-[240px] overflow-y-auto p-1"
-                    >
-                      <DropdownMenuItem
-                        onSelect={() => onGroupIdChange('')}
-                        className={cn(
-                          'gap-2 rounded-sm px-2 py-1.5 text-[13px]',
-                          !filterGroupId && 'bg-primary/5',
-                        )}
-                      >
-                        <span className="size-2.5 shrink-0" />
-                        <span className="min-w-0 flex-1 truncate text-left">
-                          {t('transactions.all')}
-                        </span>
-                        {!filterGroupId && <Check size={13} className="text-primary" />}
-                      </DropdownMenuItem>
-                      <div className="my-1 h-px bg-border/60" />
-                      {groups.length === 0 ? (
-                        <div className="px-2 py-3 text-center text-[12px] text-muted-foreground">
-                          {t('transactions.filtersBar.noOptions')}
-                        </div>
-                      ) : (
-                        groups.map((g) => (
-                          <DropdownMenuItem
-                            key={g.id}
-                            onSelect={() => onGroupIdChange(g.id)}
-                            className={cn(
-                              'gap-2 rounded-sm px-2 py-1.5 text-[13px]',
-                              filterGroupId === g.id && 'bg-primary/5',
-                            )}
-                          >
-                            <span className="size-2.5 shrink-0" />
-                            <span className="min-w-0 flex-1 truncate text-left">
-                              {g.name}
-                            </span>
-                            {filterGroupId === g.id && (
                               <Check size={13} className="text-primary" />
                             )}
                           </DropdownMenuItem>

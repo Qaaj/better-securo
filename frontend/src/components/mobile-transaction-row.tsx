@@ -16,7 +16,6 @@ function hasWordBreaks(text: string): boolean {
 interface MobileTransactionRowProps {
   tx: Transaction
   account: Account | undefined
-  groupName: string | undefined
   selected: boolean
   selectable: boolean
   canWrite: boolean
@@ -33,7 +32,6 @@ interface MobileTransactionRowProps {
 export function MobileTransactionRow({
   tx,
   account,
-  groupName,
   selected,
   selectable,
   canWrite,
@@ -48,9 +46,7 @@ export function MobileTransactionRow({
   const { mask } = usePrivacyMode()
   const { t } = useTranslation()
 
-  const displayAmount = tx.is_shared && tx.viewer_share != null
-    ? Number(tx.viewer_share)
-    : Number(tx.amount)
+  const displayAmount = Number(tx.amount)
 
   const amountColor = tx.is_ignored
     ? 'text-gray-500'
@@ -68,11 +64,10 @@ export function MobileTransactionRow({
       } ${highlighted ? 'securo-highlight-flash' : ''} ${
         virtual ? 'opacity-80' : ''
       } ${
-        virtual || tx.is_shared || !canWrite ? 'cursor-default' : 'cursor-pointer active:bg-muted/60'
+        virtual || !canWrite ? 'cursor-default' : 'cursor-pointer active:bg-muted/60'
       }`}
       onClick={() => {
         if (virtual) return
-        if (tx.is_shared) return
         if (!canWrite) return
         onClick(tx)
       }}
@@ -105,11 +100,6 @@ export function MobileTransactionRow({
           <p className={`text-sm font-semibold text-foreground leading-tight min-w-0 ${hasWordBreaks(tx.description) ? 'break-words whitespace-normal' : 'truncate'}`}>
             {tx.description}
           </p>
-          {tx.group_id && (
-            <span className="inline-flex items-center text-[9px] font-semibold uppercase tracking-wide text-violet-700 bg-violet-50 border border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900 px-1 py-0.5 rounded-full shrink-0">
-              {tx.is_shared && tx.parent_owner_name ? tx.parent_owner_name : t('splitGroups.ownerRowBadge', { group: groupName ?? '' })}
-            </span>
-          )}
           {!!tx.transfer_pair_id && (
             <ArrowLeftRight className="h-3 w-3 text-blue-600 shrink-0" />
           )}

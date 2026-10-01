@@ -438,7 +438,7 @@ export function WorkspaceSwitcher({
             <DialogDescription>
               {t(
                 'workspace.createDescription',
-                'A workspace holds its own accounts, categories, budgets, and goals. You can invite people into it from the workspace settings page.',
+                'A workspace holds its own accounts and categories. You can invite people into it from the workspace settings page.',
               )}
             </DialogDescription>
           </DialogHeader>

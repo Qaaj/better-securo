@@ -1,7 +1,7 @@
 """Global search across the user's financial entities.
 
 Implements lightweight case-insensitive ILIKE matching across transactions,
-accounts, payees, categories, goals and assets. Designed to power the
+accounts, payees, categories and assets. Designed to power the
 command palette (Cmd/Ctrl+K) on the frontend. Kept intentionally simple —
 no full-text indexes required — but fast enough for tens of thousands of
 rows thanks to per-entity LIMITs and trigger-word scoping.
@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.account import Account
 from app.models.asset import Asset
 from app.models.category import Category
-from app.models.goal import Goal
 from app.models.payee import Payee
 from app.models.transaction import Transaction
 
@@ -30,7 +29,6 @@ EntityType = Literal[
     "account",
     "payee",
     "category",
-    "goal",
     "asset",
 ]
 
@@ -81,11 +79,6 @@ async def search_all(
     Returns a flat list of hits ordered by entity type, newest first within
     each group. Matching is case-insensitive ILIKE on the most useful string
     columns per model.
-
-    Transaction search additionally pulls in cross-workspace rows the
-    caller participates in via group splits (the Splitwise projection
-    — "concert" finds the parent that someone else paid for but is on
-    the caller's settlement ledger).
     """
     term = (query or "").strip()
     if len(term) < 1:
@@ -95,25 +88,10 @@ async def search_all(
     hits: list[SearchHit] = []
 
     # -- Transactions -------------------------------------------------------
-    from app.models.group import GroupMember
-    from app.models.transaction_split import TransactionSplit
-
-    viewer_member_ids = select(GroupMember.id).where(
-        GroupMember.linked_user_id == user_id,
-        GroupMember.is_self.is_(False),
-    )
-    shared_tx_ids = (
-        select(TransactionSplit.transaction_id)
-        .where(TransactionSplit.group_member_id.in_(viewer_member_ids))
-        .distinct()
-    )
     tx_result = await session.execute(
         select(Transaction)
         .where(
-            or_(
-                Transaction.workspace_id == workspace_id,
-                Transaction.id.in_(shared_tx_ids),
-            ),
+            Transaction.workspace_id == workspace_id,
             or_(
                 Transaction.description.ilike(pattern, escape="\\"),
                 Transaction.payee.ilike(pattern, escape="\\"),
@@ -206,30 +184,6 @@ async def search_all(
                 label=cat.name,
                 icon=cat.icon,
                 color=cat.color,
-            )
-        )
-
-    # -- Goals --------------------------------------------------------------
-    goal_result = await session.execute(
-        select(Goal)
-        .where(
-            Goal.workspace_id == workspace_id,
-            Goal.name.ilike(pattern, escape="\\"),
-        )
-        .order_by(Goal.position.asc(), Goal.name.asc())
-        .limit(per_type_limit)
-    )
-    for goal in goal_result.scalars().all():
-        hits.append(
-            SearchHit(
-                type="goal",
-                id=str(goal.id),
-                label=goal.name,
-                subtitle=goal.status,
-                amount=goal.target_amount,
-                currency=goal.currency,
-                icon=goal.icon,
-                color=goal.color,
             )
         )
 

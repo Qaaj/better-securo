@@ -9,7 +9,6 @@ from app.models.account import Account
 from app.models.asset import Asset
 from app.models.asset_value import AssetValue
 from app.models.bank_connection import BankConnection
-from app.models.budget import Budget
 from app.models.category import Category
 from app.models.category_group import CategoryGroup
 from app.models.import_log import ImportLog
@@ -136,13 +135,6 @@ async def _populate_user_data(session: AsyncSession, user: User):
         filename="receipt.pdf", storage_key="k", content_type="application/pdf", size=100,
     )
     session.add(att)
-
-    # Budget
-    budget = Budget(
-        id=uuid.uuid4(), user_id=user.id, category_id=cat.id,
-        amount=Decimal("500"), month=date.today().replace(day=1), currency="BRL",
-    )
-    session.add(budget)
 
     # Recurring transaction
     rec = RecurringTransaction(

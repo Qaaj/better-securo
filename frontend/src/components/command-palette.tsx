@@ -16,8 +16,6 @@ import {
   Upload,
   SlidersHorizontal,
   Tag,
-  PiggyBank,
-  Target,
   Repeat,
   Landmark,
   Users,
@@ -61,8 +59,6 @@ const NAV_ITEMS: StaticItem[] = [
   { id: 'nav-import', labelKey: 'nav.import', icon: Upload, path: '/import', keywords: ['csv', 'ofx', 'importar'], module: 'import' },
   { id: 'nav-reports', labelKey: 'nav.reports', icon: BarChart3, path: '/reports', keywords: ['relatorios', 'relatórios', 'charts'], module: 'reports' },
   { id: 'nav-assets', labelKey: 'nav.assets', icon: Landmark, path: '/assets', keywords: ['patrimonio', 'patrimônio'], module: 'assets' },
-  { id: 'nav-budgets', labelKey: 'nav.budgets', icon: PiggyBank, path: '/budgets', keywords: ['orcamentos', 'orçamentos'], module: 'budgets' },
-  { id: 'nav-goals', labelKey: 'nav.goals', icon: Target, path: '/goals', keywords: ['metas'], module: 'goals' },
   { id: 'nav-recurring', labelKey: 'nav.recurring', icon: Repeat, path: '/recurring', keywords: ['recorrentes'], module: 'recurring' },
   { id: 'nav-categories', labelKey: 'nav.categories', icon: Tag, path: '/categories', keywords: ['categorias'], module: 'categories' },
   { id: 'nav-payees', labelKey: 'nav.payees', icon: Users, path: '/payees', keywords: ['beneficiarios', 'beneficiários'], module: 'payees' },
@@ -83,20 +79,6 @@ const QUICK_ACTIONS: StaticItem[] = [
     icon: FileSpreadsheet,
     onSelect: (nav) => nav('/import'),
     keywords: ['upload', 'csv', 'ofx', 'qif'],
-  },
-  {
-    id: 'action-new-budget',
-    labelKey: 'cmdk.actions.newBudget',
-    icon: PiggyBank,
-    onSelect: (nav) => nav('/budgets?new=1'),
-    keywords: ['budget', 'orcamento'],
-  },
-  {
-    id: 'action-new-goal',
-    labelKey: 'cmdk.actions.newGoal',
-    icon: Target,
-    onSelect: (nav) => nav('/goals?new=1'),
-    keywords: ['goal', 'meta', 'target'],
   },
   {
     id: 'action-reports',
@@ -143,13 +125,6 @@ const ENTITY_META: Record<SearchHitType, { icon: React.ElementType; tintClass: s
     bgClass: 'bg-fuchsia-500/10',
     labelKey: 'cmdk.groups.categories',
     pathFor: (hit) => `/transactions?category_id=${hit.id}`,
-  },
-  goal: {
-    icon: Target,
-    tintClass: 'text-amber-500 dark:text-amber-300',
-    bgClass: 'bg-amber-500/10',
-    labelKey: 'cmdk.groups.goals',
-    pathFor: () => '/goals',
   },
   asset: {
     icon: Landmark,
@@ -537,7 +512,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   )}
 
                   {/* Entity results — highest priority when searching */}
-                  {(['transaction', 'account', 'payee', 'category', 'goal', 'asset'] as SearchHitType[]).map((type) => {
+                  {(['transaction', 'account', 'payee', 'category', 'asset'] as SearchHitType[]).map((type) => {
                     const items = grouped.get(type) ?? []
                     if (items.length === 0) return null
                     const meta = ENTITY_META[type]

@@ -15,7 +15,6 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.budget import Budget
 from app.models.category import Category
 from app.models.recurring_transaction import RecurringTransaction
 from app.models.rule import Rule
@@ -75,30 +74,6 @@ async def _make_rule(
     return rule
 
 
-async def _make_budget(
-    session: AsyncSession,
-    user: User,
-    workspace,
-    category_id: uuid.UUID,
-    *,
-    amount: str,
-    month: date,
-    is_recurring: bool = False,
-) -> Budget:
-    budget = Budget(
-        user_id=user.id,
-        workspace_id=workspace.id,
-        category_id=category_id,
-        amount=Decimal(amount),
-        month=month,
-        is_recurring=is_recurring,
-    )
-    session.add(budget)
-    await session.commit()
-    await session.refresh(budget)
-    return budget
-
-
 @pytest.mark.asyncio
 async def test_usage_lists_every_kind_of_reference(
     client: AsyncClient,
@@ -110,10 +85,6 @@ async def test_usage_lists_every_kind_of_reference(
     test_transactions: list[Transaction],
 ):
     category = test_categories[0]
-    await _make_budget(
-        session, test_user, test_workspace, category.id,
-        amount="300.00", month=date.today().replace(day=1),
-    )
     session.add(_recurring(test_user, test_workspace, category.id))
     await session.commit()
     await _make_rule(session, test_user, test_workspace, category.id, name="Files food")
@@ -125,7 +96,6 @@ async def test_usage_lists_every_kind_of_reference(
     assert response.status_code == 200
     usage = response.json()
     assert usage["transactions"] == 1
-    assert usage["budgets"] == 1
     assert usage["recurring_transactions"] == 1
     assert [rule["name"] for rule in usage["rules"]] == ["Files food"]
 
@@ -141,7 +111,6 @@ async def test_usage_of_an_untouched_category_is_all_zeros(
     assert response.status_code == 200
     assert response.json() == {
         "transactions": 0,
-        "budgets": 0,
         "recurring_transactions": 0,
         "rules": [],
     }
@@ -204,16 +173,12 @@ async def test_delete_with_a_destination_moves_everything(
     test_transactions: list[Transaction],
 ):
     source, destination = test_categories[0], test_categories[1]
-    budget = await _make_budget(
-        session, test_user, test_workspace, source.id,
-        amount="300.00", month=date.today().replace(day=1),
-    )
     recurring = _recurring(test_user, test_workspace, source.id)
     session.add(recurring)
     await session.commit()
     rule = await _make_rule(session, test_user, test_workspace, source.id)
     source_id, destination_id = source.id, destination.id
-    budget_id, recurring_id, rule_id = budget.id, recurring.id, rule.id
+    recurring_id, rule_id = recurring.id, rule.id
 
     response = await client.delete(
         f"/api/categories/{source_id}",
@@ -232,7 +197,6 @@ async def test_delete_with_a_destination_moves_everything(
     ).scalars().all()
     assert len(moved) == 2  # its own transaction plus the one moved over
 
-    assert (await _reload(session, Budget, budget_id)).category_id == destination_id
     moved_recurring = await _reload(session, RecurringTransaction, recurring_id)
     assert moved_recurring.category_id == destination_id
 
@@ -269,75 +233,6 @@ async def test_delete_repoints_rules_that_are_switched_off(
     reloaded = await _reload(session, Rule, rule_id)
     assert reloaded.actions[0]["value"] == str(destination_id)
     assert reloaded.is_active is False
-
-
-@pytest.mark.asyncio
-async def test_budgets_for_the_same_month_are_added_up(
-    client: AsyncClient,
-    auth_headers,
-    session: AsyncSession,
-    test_user: User,
-    test_workspace,
-    test_categories: list[Category],
-):
-    """Two budgets cannot share a month and a category, so they become one.
-
-    Keeping only one of the two would quietly lower the ceiling the user set.
-    """
-    source, destination = test_categories[0], test_categories[1]
-    month = date.today().replace(day=1)
-    source_budget = await _make_budget(
-        session, test_user, test_workspace, source.id, amount="300.00", month=month
-    )
-    destination_budget = await _make_budget(
-        session, test_user, test_workspace, destination.id, amount="500.00", month=month
-    )
-    source_budget_id, destination_budget_id = source_budget.id, destination_budget.id
-
-    response = await client.delete(
-        f"/api/categories/{source.id}",
-        headers=auth_headers,
-        params={"transfer_to_category_id": str(destination.id)},
-    )
-
-    assert response.status_code == 204
-    session.expire_all()
-    assert await session.get(Budget, source_budget_id) is None
-    assert (await _reload(session, Budget, destination_budget_id)).amount == Decimal("800.00")
-
-
-@pytest.mark.asyncio
-async def test_a_recurring_budget_does_not_absorb_a_one_off_one(
-    client: AsyncClient,
-    auth_headers,
-    session: AsyncSession,
-    test_user: User,
-    test_workspace,
-    test_categories: list[Category],
-):
-    """The two kinds live side by side on the same month, so they stay apart."""
-    source, destination = test_categories[0], test_categories[1]
-    month = date.today().replace(day=1)
-    moving = await _make_budget(
-        session, test_user, test_workspace, source.id,
-        amount="300.00", month=month, is_recurring=True,
-    )
-    standing = await _make_budget(
-        session, test_user, test_workspace, destination.id,
-        amount="500.00", month=month, is_recurring=False,
-    )
-    destination_id, moving_id, standing_id = destination.id, moving.id, standing.id
-
-    response = await client.delete(
-        f"/api/categories/{source.id}",
-        headers=auth_headers,
-        params={"transfer_to_category_id": str(destination_id)},
-    )
-
-    assert response.status_code == 204
-    session.expire_all()
-    assert (await _reload(session, Budget, moving_id)).category_id == destination_id
-    assert (await _reload(session, Budget, standing_id)).amount == Decimal("500.00")
 
 
 @pytest.mark.asyncio

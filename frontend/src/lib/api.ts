@@ -46,8 +46,6 @@ import type {
   RecurringTransaction,
   ProjectedTransaction,
   TransactionCalendarResponse,
-  Budget,
-  BudgetVsActual,
   Rule,
   RuleAction,
   RuleConditionNode,
@@ -73,20 +71,12 @@ import type {
   MarketSymbolMatch,
   MarketSymbolQuote,
   Attachment,
-  Goal,
-  GoalSummary,
   DashboardSummary,
   SpendingByCategory,
   MonthlyTrend,
   BalanceHistory,
   PaginatedTransactions,
   ReportResponse,
-  Group,
-  GroupKind,
-  GroupMember,
-  GroupSettlement,
-  GroupBalances,
-  TransactionSplitsInput,
   TransactionEditPayload,
   InstallmentSeriesInput,
   TransactionApplyScope,
@@ -514,7 +504,6 @@ export const transactions = {
     from?: string
     to?: string
     bill_id?: string
-    group_id?: string
     unbilled_only?: boolean
     q?: string
     page?: number
@@ -609,22 +598,6 @@ export const transactions = {
     const { data } = await api.patch('/transactions/bulk-remove-tags', {
       transaction_ids: transactionIds,
       tags,
-    })
-    return data
-  },
-  bulkAddToGroup: async (
-    transactionIds: string[],
-    groupId: string,
-    options?: {
-      share_type?: 'equal' | 'percent'
-      member_splits?: { group_member_id: string; share_pct?: number }[]
-    },
-  ): Promise<{ updated: number; skipped: number }> => {
-    const { data } = await api.patch('/transactions/bulk-add-to-group', {
-      transaction_ids: transactionIds,
-      group_id: groupId,
-      ...(options?.share_type ? { share_type: options.share_type } : {}),
-      ...(options?.member_splits ? { member_splits: options.member_splits } : {}),
     })
     return data
   },
@@ -893,132 +866,6 @@ export const payees = {
   },
 }
 
-// Groups (split transactions)
-export interface GroupCreatePayload {
-  name: string
-  kind?: GroupKind
-  default_currency?: string
-  icon?: string
-  color?: string
-  notes?: string | null
-}
-
-export interface GroupMemberPayload {
-  name: string
-  linked_user_id?: string | null
-  email?: string | null
-  is_self?: boolean
-}
-
-export interface GroupSettlementPayload {
-  from_member_id: string
-  to_member_id: string
-  amount: number
-  currency: string
-  date: string
-  transaction_id?: string | null
-  notes?: string | null
-  // When provided, the backend creates a debit transaction on this
-  // account and links it via transaction_id. Mutually exclusive with
-  // passing transaction_id directly.
-  account_id?: string | null
-  description?: string | null
-}
-
-export const groups = {
-  list: async (includeArchived = false): Promise<Group[]> => {
-    const { data } = await api.get('/groups', { params: { include_archived: includeArchived } })
-    return data
-  },
-  get: async (id: string): Promise<Group> => {
-    const { data } = await api.get(`/groups/${id}`)
-    return data
-  },
-  create: async (payload: GroupCreatePayload): Promise<Group> => {
-    const { data } = await api.post('/groups', payload)
-    return data
-  },
-  update: async (id: string, payload: Partial<GroupCreatePayload> & { is_archived?: boolean }): Promise<Group> => {
-    const { data } = await api.patch(`/groups/${id}`, payload)
-    return data
-  },
-  delete: async (id: string): Promise<void> => {
-    await api.delete(`/groups/${id}`)
-  },
-  members: {
-    list: async (groupId: string): Promise<GroupMember[]> => {
-      const { data } = await api.get(`/groups/${groupId}/members`)
-      return data
-    },
-    create: async (groupId: string, payload: GroupMemberPayload): Promise<GroupMember> => {
-      const { data } = await api.post(`/groups/${groupId}/members`, payload)
-      return data
-    },
-    update: async (groupId: string, memberId: string, payload: Partial<GroupMemberPayload>): Promise<GroupMember> => {
-      const { data } = await api.patch(`/groups/${groupId}/members/${memberId}`, payload)
-      return data
-    },
-    delete: async (groupId: string, memberId: string): Promise<void> => {
-      await api.delete(`/groups/${groupId}/members/${memberId}`)
-    },
-  },
-  settlements: {
-    list: async (groupId: string): Promise<GroupSettlement[]> => {
-      const { data } = await api.get(`/groups/${groupId}/settlements`)
-      return data
-    },
-    create: async (groupId: string, payload: GroupSettlementPayload): Promise<GroupSettlement> => {
-      const { data } = await api.post(`/groups/${groupId}/settlements`, payload)
-      return data
-    },
-    update: async (groupId: string, settlementId: string, payload: Partial<GroupSettlementPayload>): Promise<GroupSettlement> => {
-      const { data } = await api.patch(`/groups/${groupId}/settlements/${settlementId}`, payload)
-      return data
-    },
-    delete: async (groupId: string, settlementId: string): Promise<void> => {
-      await api.delete(`/groups/${groupId}/settlements/${settlementId}`)
-    },
-  },
-  balances: async (groupId: string): Promise<GroupBalances> => {
-    const { data } = await api.get(`/groups/${groupId}/balances`)
-    return data
-  },
-  transactions: async (groupId: string, limit = 20): Promise<Transaction[]> => {
-    const { data } = await api.get(`/groups/${groupId}/transactions`, {
-      params: { limit },
-    })
-    return data
-  },
-}
-
-// Helper re-export so transaction-creation forms have a typed entry point.
-export type { TransactionSplitsInput }
-
-// User lookup: exact-match resolution for linking group members to
-// existing Securo users. Returns null on miss (404).
-export interface UserLookupResult {
-  id: string
-  email: string
-}
-
-export const users = {
-  lookupByEmail: async (email: string): Promise<UserLookupResult | null> => {
-    try {
-      const { data } = await api.get('/users/lookup', { params: { email } })
-      return data
-    } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 404) return null
-      throw err
-    }
-  },
-  directory: async (): Promise<UserLookupResult[]> => {
-    const { data } = await api.get('/users/directory')
-    return data
-  },
-}
-
-
 // Categorization Rules
 export const rules = {
   list: async (): Promise<Rule[]> => {
@@ -1217,56 +1064,6 @@ export const recurring = {
   },
   generate: async (): Promise<{ generated: number }> => {
     const { data } = await api.post('/recurring-transactions/generate')
-    return data
-  },
-}
-
-// Budgets
-export const budgets = {
-  list: async (month?: string): Promise<Budget[]> => {
-    const { data } = await api.get('/budgets', { params: { month } })
-    return data
-  },
-  create: async (budget: { category_id: string; amount: number; month: string; is_recurring?: boolean }): Promise<Budget> => {
-    const { data } = await api.post('/budgets', budget)
-    return data
-  },
-  update: async (id: string, budget: { amount?: number }): Promise<Budget> => {
-    const { data } = await api.patch(`/budgets/${id}`, budget)
-    return data
-  },
-  delete: async (id: string): Promise<void> => {
-    await api.delete(`/budgets/${id}`)
-  },
-  comparison: async (month?: string): Promise<BudgetVsActual[]> => {
-    const { data } = await api.get('/budgets/comparison', { params: { month } })
-    return data
-  },
-}
-
-// Goals
-export const goals = {
-  list: async (status?: string): Promise<Goal[]> => {
-    const { data } = await api.get('/goals', { params: { status } })
-    return data
-  },
-  get: async (id: string): Promise<Goal> => {
-    const { data } = await api.get(`/goals/${id}`)
-    return data
-  },
-  create: async (goal: Partial<Goal>): Promise<Goal> => {
-    const { data } = await api.post('/goals', goal)
-    return data
-  },
-  update: async (id: string, goal: Partial<Goal>): Promise<Goal> => {
-    const { data } = await api.patch(`/goals/${id}`, goal)
-    return data
-  },
-  delete: async (id: string): Promise<void> => {
-    await api.delete(`/goals/${id}`)
-  },
-  summary: async (limit = 3): Promise<GoalSummary[]> => {
-    const { data } = await api.get('/goals/summary', { params: { limit } })
     return data
   },
 }
@@ -1672,7 +1469,6 @@ export type SearchHitType =
   | 'account'
   | 'payee'
   | 'category'
-  | 'goal'
   | 'asset'
 
 export interface SearchHit {

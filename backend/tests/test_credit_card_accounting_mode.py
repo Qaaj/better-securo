@@ -28,7 +28,6 @@ from app.models.transaction import Transaction
 from app.services import (
     account_service,
     admin_service,
-    budget_service,
     dashboard_service,
 )
 from app.services.credit_card_service import (
@@ -618,65 +617,6 @@ class TestSpendingByCategory:
         )
         assert may.monthly_expenses == 0.0
         assert june.monthly_expenses == 100.0
-
-
-# ---------------------------------------------------------------------------
-# Budget vs actual.
-# ---------------------------------------------------------------------------
-
-
-class TestBudgetVsActual:
-    @pytest.mark.asyncio
-    async def test_budget_spending_follows_mode(
-        self, session, test_user, test_workspace, cc_account, test_categories
-    ):
-        from app.models.budget import Budget
-        food = test_categories[0]
-        # Budget R$200/month for food
-        budget = Budget(
-            id=uuid.uuid4(),
-            user_id=test_user.id,
-            category_id=food.id,
-            amount=Decimal("200"),
-            currency="BRL",
-            month=date(2026, 4, 1),
-        )
-        session.add(budget)
-
-        # Mar 30 R$150 food (effective Apr 16)
-        await _make_tx(
-            session, test_user.id, cc_account.id, date(2026, 3, 30),
-            Decimal("150"), effective_date=date(2026, 4, 16), category_id=food.id,
-        )
-        # Apr 5 R$30 food (effective Apr 16)
-        await _make_tx(
-            session, test_user.id, cc_account.id, date(2026, 4, 5),
-            Decimal("30"), effective_date=date(2026, 4, 16), category_id=food.id,
-        )
-        # Apr 15 R$20 food (effective May 16 — next cycle)
-        await _make_tx(
-            session, test_user.id, cc_account.id, date(2026, 4, 15),
-            Decimal("20"), effective_date=date(2026, 5, 16), category_id=food.id,
-        )
-        await session.commit()
-
-        await _set_mode(session, "cash")
-        cash = await budget_service.get_budget_vs_actual(
-            session, test_workspace.id, test_user.id, date(2026, 4, 1)
-        )
-        cash_food = next((c for c in cash if c.category_id == food.id), None)
-        # Cash April: Apr 5 (30) + Apr 15 (20) = 50
-        assert cash_food is not None
-        assert float(cash_food.actual_amount) == 50.0
-
-        await _set_mode(session, "accrual")
-        accrual = await budget_service.get_budget_vs_actual(
-            session, test_workspace.id, test_user.id, date(2026, 4, 1)
-        )
-        accrual_food = next((c for c in accrual if c.category_id == food.id), None)
-        # Accrual April: Mar 30 (150) + Apr 5 (30) = 180
-        assert accrual_food is not None
-        assert float(accrual_food.actual_amount) == 180.0
 
 
 # ---------------------------------------------------------------------------

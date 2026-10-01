@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.account import Account
 from app.models.asset import Asset
 from app.models.category import Category
-from app.models.goal import Goal
 from app.models.payee import Payee
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -61,18 +60,6 @@ async def _seed(session: AsyncSession, user: User) -> None:
             payee="Padaria Boulangerie",
             currency="BRL",
             created_at=datetime.now(timezone.utc),
-        )
-    )
-
-    session.add(
-        Goal(
-            id=uuid.uuid4(),
-            user_id=user.id,
-            name="Trip to Lisbon",
-            target_amount=Decimal("5000"),
-            current_amount=Decimal("1000"),
-            currency="EUR",
-            status="active",
         )
     )
 
@@ -146,14 +133,10 @@ async def test_search_matches_account(
 
 
 @pytest.mark.asyncio
-async def test_search_matches_goal_and_asset(
+async def test_search_matches_asset(
     client: AsyncClient, auth_headers: dict, session: AsyncSession, test_user: User
 ) -> None:
     await _seed(session, test_user)
-
-    resp = await client.get("/api/search?q=lisbon", headers=auth_headers)
-    assert resp.status_code == 200
-    assert any(h["type"] == "goal" for h in resp.json()["results"])
 
     resp = await client.get("/api/search?q=peugeot", headers=auth_headers)
     assert resp.status_code == 200

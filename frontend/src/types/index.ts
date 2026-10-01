@@ -110,7 +110,6 @@ export interface CategoryRuleUsage {
 /** Everything that still points at a category, used when deleting one. */
 export interface CategoryUsage {
   transactions: number
-  budgets: number
   recurring_transactions: number
   rules: { id: string; name: string }[]
 }
@@ -280,17 +279,6 @@ export interface Transaction {
   effective_bill_date: string | null
   // The recurring bill this transaction fulfills, if any (issue #116).
   recurring_transaction_id?: string | null
-  splits: TransactionSplit[]
-  // Shared-transaction view fields. Set per-request when the viewer
-  // is a linked split member but not the owner. Render `viewer_share`
-  // as the amount and treat the row as read-only — editing belongs
-  // to the parent's owner.
-  is_shared?: boolean
-  viewer_share?: number | null
-  group_id?: string | null
-  // Display name of the parent's owner (the person who actually paid).
-  // Derived per-request from the group's `is_self` member.
-  parent_owner_name?: string | null
   // Flag to exclude this transaction from reports and dashboard aggregations
   is_ignored: boolean
   // Keeps the transaction in the ledger/balance while excluding it from P&L.
@@ -322,103 +310,14 @@ export interface InstallmentSeriesInput {
     amount_primary?: number | null
     fx_rate_used?: number | null
     effective_bill_date?: string | null
-    splits?: TransactionSplitsInput | null
   }
   installments: number
   first_installment_status?: 'posted' | 'pending'
   frequency?: 'monthly' | 'quarterly' | 'semiannual' | 'weekly' | 'biweekly' | 'yearly'
 }
 
-export type ShareType = 'equal' | 'exact' | 'percent'
-
-export interface TransactionSplit {
-  id: string
-  transaction_id: string
-  group_member_id: string
-  share_amount: number
-  share_type: string
-  share_pct: number | null
-  notes: string | null
-  created_at: string
-}
-
-export interface TransactionSplitInput {
-  group_member_id: string
-  share_amount?: number | null
-  share_pct?: number | null
-  notes?: string | null
-}
-
-export interface TransactionSplitsInput {
-  share_type: ShareType
-  splits: TransactionSplitInput[]
-}
-
-// Payload the transaction dialog sends on save. `splits` is the normalized
-// TransactionSplitsInput the split section produces, not the
-// TransactionSplit[] rows the API returns, so the edit payload type reflects
-// the form's actual shape.
-export type TransactionEditPayload = Omit<Partial<Transaction>, 'splits'> & {
-  splits?: TransactionSplitsInput | null
-}
-
-export type GroupKind = 'social' | 'cost_center' | 'project' | 'client' | 'other'
-
-export interface Group {
-  id: string
-  user_id: string
-  name: string
-  kind: GroupKind
-  default_currency: string
-  icon: string
-  color: string
-  is_archived: boolean
-  // Derived server-side per request. False = the current user is a
-  // linked member, not the owner — UI should hide edit affordances.
-  is_owner: boolean
-  notes: string | null
-  created_at: string
-  members: GroupMember[]
-}
-
-export interface GroupMember {
-  id: string
-  group_id: string
-  name: string
-  linked_user_id: string | null
-  email: string | null
-  is_self: boolean
-  created_at: string
-}
-
-export interface GroupSettlement {
-  id: string
-  group_id: string
-  from_member_id: string
-  to_member_id: string
-  amount: number
-  currency: string
-  date: string
-  transaction_id: string | null
-  notes: string | null
-  created_at: string
-}
-
-export interface GroupBalanceLine {
-  member_id: string
-  currency: string
-  // Positive = member owes the owner. Negative = owner owes member.
-  amount: number
-  // FX-converted to the group's default currency for cross-currency rollups.
-  amount_in_default_currency: number
-}
-
-export interface GroupBalances {
-  group_id: string
-  self_member_id: string | null
-  default_currency: string
-  lines: GroupBalanceLine[]
-}
+// Payload the transaction dialog sends on save.
+export type TransactionEditPayload = Partial<Transaction>
 
 /** A fiscal document belonging to a payee. `kind` mirrors the backend's
  *  closed TaxIdKind; the value arrives normalised. */
@@ -710,10 +609,6 @@ export interface DashboardSummary {
   assets_value: Record<string, number>
   assets_value_primary: number
   primary_currency: string
-  // Net pending balance from group splits in primary currency.
-  // Negative = net liability, positive = net receivable. Already
-  // accounts for partial settlements.
-  pending_shares_net: number
 }
 
 export interface SpendingByCategory {
@@ -740,31 +635,6 @@ export interface DailyBalance {
 export interface BalanceHistory {
   current: DailyBalance[]
   previous: DailyBalance[]
-}
-
-export interface Budget {
-  id: string
-  user_id: string
-  category_id: string
-  amount: number
-  month: string
-  is_recurring: boolean
-}
-
-export interface BudgetVsActual {
-  category_id: string
-  category_name: string
-  category_icon: string
-  category_color: string
-  group_id: string | null
-  group_name: string | null
-  budget_amount: number | null
-  actual_amount: number
-  projected_amount: number
-  prev_month_amount: number
-  projected_prev_month_amount: number
-  percentage_used: number | null
-  is_recurring: boolean
 }
 
 export interface Asset {
@@ -910,50 +780,6 @@ export interface AssetValue {
   amount: number
   date: string
   source: string
-}
-
-export interface Goal {
-  id: string
-  user_id: string
-  name: string
-  target_amount: number
-  current_amount: number
-  currency: string
-  target_amount_primary: number | null
-  current_amount_primary: number | null
-  target_date: string | null
-  tracking_type: 'manual' | 'account' | 'asset' | 'asset_group' | 'net_worth'
-  account_id: string | null
-  asset_id: string | null
-  asset_group_id: string | null
-  status: 'active' | 'completed' | 'paused' | 'archived'
-  icon: string | null
-  color: string | null
-  position: number
-  metadata_json: Record<string, unknown> | null
-  created_at: string
-  updated_at: string
-  percentage: number
-  monthly_contribution: number | null
-  on_track: 'ahead' | 'on_track' | 'behind' | 'overdue' | 'achieved' | null
-  account_name: string | null
-  asset_name: string | null
-  asset_group_name: string | null
-}
-
-export interface GoalSummary {
-  id: string
-  name: string
-  target_amount: number
-  current_amount: number
-  currency: string
-  target_date: string | null
-  status: string
-  icon: string | null
-  color: string | null
-  percentage: number
-  monthly_contribution: number | null
-  on_track: string | null
 }
 
 export interface PaginatedResponse<T> {

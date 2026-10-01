@@ -23,7 +23,7 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
     name: 'Personal',
     kind: 'personal',
     role: 'owner',
-    enabled_modules: ['transactions', 'accounts', 'budgets'],
+    enabled_modules: ['transactions', 'accounts', 'recurring'],
     ...overrides,
   } as Workspace
 }
@@ -240,13 +240,13 @@ describe('roles', () => {
 describe('hasModule', () => {
   it('is true only for modules the server enabled', async () => {
     workspacesApi.list.mockResolvedValue([
-      makeWorkspace({ enabled_modules: ['transactions', 'budgets'] }),
+      makeWorkspace({ enabled_modules: ['transactions', 'recurring'] }),
     ])
 
     const { result } = await renderWorkspace()
 
     expect(result.current.hasModule('transactions')).toBe(true)
-    expect(result.current.hasModule('budgets')).toBe(true)
+    expect(result.current.hasModule('recurring')).toBe(true)
     expect(result.current.hasModule('invoices')).toBe(false)
   })
 

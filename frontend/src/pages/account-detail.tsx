@@ -689,7 +689,6 @@ export default function AccountDetailPage() {
       bill_id: null,
       effective_bill_date: null,
       recurring_transaction_id: p.recurring_id,
-      splits: [],
       is_ignored: false,
       virtual: true,
       runningBalance: 0,
@@ -1566,7 +1565,6 @@ export default function AccountDetailPage() {
                       key={tx.id}
                       tx={tx}
                       account={account}
-                      groupName={undefined}
                       selected={false}
                       selectable={false}
                       canWrite={canWrite}
@@ -1579,7 +1577,7 @@ export default function AccountDetailPage() {
                         // The opening-balance row is synthetic; the desktop
                         // table makes it non-clickable and mobile must match.
                         if (clickedTx.source === 'opening_balance') return
-                        if (!clickedTx.is_shared && canWrite) {
+                        if (canWrite) {
                           setEditingTx(clickedTx)
                           setDialogOpen(true)
                         }

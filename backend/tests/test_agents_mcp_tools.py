@@ -32,8 +32,6 @@ def test_registry_contains_v1_tools():
         "get_account_summary",
         "list_categories",
         "list_payees",
-        "get_budget_vs_actual",
-        "list_budgets",
         "get_net_worth",
         "get_income_expenses",
         "get_cash_flow",
@@ -42,17 +40,14 @@ def test_registry_contains_v1_tools():
         "aggregate",
         "propose_categorize",
         "propose_create_category",
-        "propose_create_budget",
         "propose_create_payee_rule",
         "propose_create_transaction",
         "propose_create_recurring_transaction",
         "propose_update_recurring_transaction",
         "propose_cancel_recurring_transaction",
-        "propose_create_goal",
         "search_knowledge_base",
         "list_recurring_transactions",
         "list_assets",
-        "list_goals",
     }
     assert expected.issubset(set(REGISTRY.keys())), (
         f"missing: {expected - set(REGISTRY.keys())}"
@@ -60,7 +55,7 @@ def test_registry_contains_v1_tools():
 
 
 def test_proposal_tools_marked_is_proposal():
-    for name in ("propose_categorize", "propose_create_category", "propose_create_budget", "propose_create_payee_rule"):
+    for name in ("propose_categorize", "propose_create_category", "propose_create_payee_rule"):
         spec = REGISTRY[name]
         assert spec.is_proposal, f"{name} should have is_proposal=True"
 
@@ -225,18 +220,6 @@ async def test_list_assets_empty(session: AsyncSession, ctx: CallContext):
     handler = REGISTRY["list_assets"].handler
     r = await handler(session=session, ctx=ctx)
     assert r["total"] == 0
-
-
-async def test_list_goals_empty(session: AsyncSession, ctx: CallContext):
-    handler = REGISTRY["list_goals"].handler
-    r = await handler(session=session, ctx=ctx)
-    assert r["total"] == 0
-
-
-async def test_list_budgets_empty(session: AsyncSession, ctx: CallContext):
-    handler = REGISTRY["list_budgets"].handler
-    r = await handler(session=session, ctx=ctx)
-    assert r == {"items": [], "total": 0}
 
 
 async def test_aggregate_payee_filter(
@@ -420,22 +403,6 @@ async def test_propose_create_category_no_collision(
     assert result["proposed"]["name"] == "UniqueNewCategoryX9Z"
 
 
-async def test_propose_create_budget(
-    session: AsyncSession, ctx: CallContext, test_categories
-):
-    handler = REGISTRY["propose_create_budget"].handler
-    result = await handler(
-        session=session, ctx=ctx,
-        category_id=str(test_categories[0].id),
-        month="2026-05-15",
-        amount=500.0,
-        currency="BRL",
-    )
-    assert result["kind"] == "create_budget"
-    assert result["proposed"]["amount"] == 500.0
-    assert result["proposed"]["month"] == "2026-05-01"  # snapped to month start
-
-
 async def test_propose_create_transaction_full(
     session: AsyncSession, ctx: CallContext, test_account, test_categories
 ):
@@ -583,18 +550,6 @@ async def test_propose_cancel_recurring_default_mode_is_deactivate(
     r = await handler(session=session, ctx=ctx, recurring_id=str(rt.id))
     assert r["mode"] == "deactivate"
     assert r["target"]["description"] == "Spotify"
-
-
-async def test_propose_create_goal(session: AsyncSession, ctx: CallContext):
-    handler = REGISTRY["propose_create_goal"].handler
-    r = await handler(
-        session=session, ctx=ctx,
-        name="Viagem para o Japão", target_amount=10000, deadline="2026-12-31",
-    )
-    assert r["kind"] == "create_goal"
-    assert r["proposed"]["target_amount"] == 10000.0
-    assert r["proposed"]["deadline"] == "2026-12-31"
-    assert r["proposed"]["initial_amount"] == 0.0
 
 
 async def test_propose_create_payee_rule_unknown_category(
@@ -791,33 +746,6 @@ async def test_propose_create_category_external_apply_blocks_collision(
     assert after == before
 
 
-async def test_propose_create_budget_external_apply_writes(
-    session: AsyncSession, test_user, test_categories
-):
-    from datetime import date
-    from sqlalchemy import select
-    from app.models.budget import Budget
-
-    handler = REGISTRY["propose_create_budget"].handler
-    ctx = CallContext(user_id=test_user.id, external=True)
-    cat = test_categories[0]
-
-    result = await handler(
-        session=session, ctx=ctx,
-        category_id=str(cat.id),
-        month=date.today().replace(day=1).isoformat(),
-        amount=500.0,
-        apply=True,
-    )
-    assert result.get("applied") is True
-
-    row = (await session.execute(
-        select(Budget).where(Budget.id == uuid.UUID(result["id"]))
-    )).scalar_one()
-    assert row.category_id == cat.id
-    assert float(row.amount) == 500.0
-
-
 async def test_propose_create_transaction_external_apply_writes(
     session: AsyncSession, test_user, test_account, test_categories
 ):
@@ -1006,31 +934,6 @@ async def test_propose_cancel_recurring_transaction_delete_apply(
         select(RecurringTransaction).where(RecurringTransaction.id == rt_id)
     )).scalar_one_or_none()
     assert gone is None
-
-
-async def test_propose_create_goal_external_apply_writes(
-    session: AsyncSession, test_user
-):
-    from sqlalchemy import select
-    from app.models.goal import Goal
-
-    handler = REGISTRY["propose_create_goal"].handler
-    ctx = CallContext(user_id=test_user.id, external=True)
-
-    result = await handler(
-        session=session, ctx=ctx,
-        name="Travel fund",
-        target_amount=10000.0,
-        currency="BRL",
-        apply=True,
-    )
-    assert result.get("applied") is True
-
-    row = (await session.execute(
-        select(Goal).where(Goal.id == uuid.UUID(result["id"]))
-    )).scalar_one()
-    assert row.name == "Travel fund"
-    assert float(row.target_amount) == 10000.0
 
 
 async def test_propose_create_payee_rule_external_apply_writes(

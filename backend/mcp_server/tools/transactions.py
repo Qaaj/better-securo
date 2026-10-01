@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.group import GroupMember
 from app.services import transaction_service
 from mcp_server.auth import CallContext
 from mcp_server.registry import tool
@@ -26,13 +24,7 @@ from mcp_server.tools._helpers import num, parse_date, parse_uuid, parse_uuid_li
         "native currency in `currency` and the user's primary-currency "
         "view in `amount_primary`. To answer 'do I have any EUR/USD/etc "
         "transactions?' use the `currency` filter — don't text-search "
-        "the description. Each row also carries a `splits` field: when "
-        "non-null, the transaction is shared via a Splitwise-style "
-        "group — `splits.group_id` ties it back to a row from "
-        "`list_groups`, and `splits.members[]` shows each "
-        "{member_id, member_name, is_self, share_amount, share_type, "
-        "share_pct}. So 'is this transaction split?' is just `splits != "
-        "null`; no extra tool call needed."
+        "the description."
     ),
     parameters={
         "type": "object",
@@ -45,7 +37,6 @@ from mcp_server.tools._helpers import num, parse_date, parse_uuid, parse_uuid_li
             },
             "category_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}, "description": "Filter to specific categories"},
             "payee_id": {"type": "string", "format": "uuid", "description": "Filter to a single payee"},
-            "group_id": {"type": "string", "format": "uuid", "description": "Filter to transactions split with this expense-sharing group (Splitwise-style). The id comes from `list_groups`. Use this — NOT a `search:'group_id:...'` hack — to ask 'show all transactions in group X'."},
             "from_date": {"type": "string", "format": "date", "description": "Inclusive lower bound (YYYY-MM-DD)"},
             "to_date": {"type": "string", "format": "date", "description": "Inclusive upper bound (YYYY-MM-DD)"},
             "search": {"type": "string", "description": "Substring match against description or payee"},
@@ -101,7 +92,6 @@ async def list_transactions(
     account_types: list[str] | None = None,
     category_ids: list[str] | None = None,
     payee_id: str | None = None,
-    group_id: str | None = None,
     from_date: str | None = None,
     to_date: str | None = None,
     search: str | None = None,
@@ -131,7 +121,6 @@ async def list_transactions(
         account_types=account_types or None,
         category_ids=parse_uuid_list(category_ids),
         payee_id=parse_uuid(payee_id) if payee_id else None,
-        group_id=parse_uuid(group_id) if group_id else None,
         from_date=parse_date(from_date),
         to_date=parse_date(to_date),
         search=search,
@@ -149,49 +138,6 @@ async def list_transactions(
         limit=int(limit),
         page=int(page),
     )
-    # Resolve group + member metadata for any transaction with splits, in
-    # one batched query — without this the agent has no way to tell that
-    # a transaction is split among a group's members ("is this Jantar a
-    # solo expense?" → "no, split with Marcelo + Tereza in Amigos").
-    member_ids: set[Any] = set()
-    for t in txs:
-        for s in (getattr(t, "splits", None) or []):
-            member_ids.add(s.group_member_id)
-    member_lookup: dict[Any, GroupMember] = {}
-    if member_ids:
-        rows = (await session.execute(
-            select(GroupMember).where(GroupMember.id.in_(member_ids))
-        )).scalars().all()
-        member_lookup = {m.id: m for m in rows}
-
-    def _splits_summary(t: Any) -> dict[str, Any] | None:
-        splits = getattr(t, "splits", None) or []
-        if not splits:
-            return None
-        # Splits all belong to the same group by invariant — surface the
-        # group id from any one of them so the model can correlate with
-        # `list_groups` without a second tool call.
-        group_id = None
-        items = []
-        for s in splits:
-            mem = member_lookup.get(s.group_member_id)
-            if mem is not None and group_id is None:
-                group_id = str(mem.group_id)
-            items.append({
-                "member_id": str(s.group_member_id),
-                "member_name": mem.name if mem else None,
-                "is_self": bool(getattr(mem, "is_self", False)) if mem else False,
-                "share_amount": num(s.share_amount),
-                "share_type": s.share_type,
-                "share_pct": num(s.share_pct),
-            })
-        return {
-            "is_split": True,
-            "group_id": group_id,
-            "share_type": splits[0].share_type if splits else None,
-            "members": items,
-        }
-
     items = [
         {
             "id": str(t.id),
@@ -212,7 +158,6 @@ async def list_transactions(
             "tags": getattr(t, "tags", None),
             "is_transfer": bool(getattr(t, "transfer_pair_id", None)),
             "notes": getattr(t, "notes", None),
-            "splits": _splits_summary(t),
         }
         for t in txs
     ]

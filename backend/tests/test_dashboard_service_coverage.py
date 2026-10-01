@@ -1,8 +1,7 @@
 """Coverage-focused tests for app.services.dashboard_service.
 
 Targets the multi-currency conversion branches, recurring-projection
-balance adjustments, group-split (owner offset + viewer shared) paths,
-pending-shares-net aggregation, and the daily-deltas / balance-history
+balance adjustments, and the daily-deltas / balance-history
 projection branches that the existing suite doesn't reach.
 """
 import uuid
@@ -16,18 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.account import Account
 from app.models.category import Category
 from app.models.fx_rate import FxRate
-from app.models.group import Group, GroupMember
 from app.models.recurring_transaction import RecurringTransaction
 from app.models.transaction import Transaction
-from app.models.transaction_split import TransactionSplit
 from app.services.dashboard_service import (
     _balance_at,
-    _compute_pending_shares_net,
     _daily_deltas,
     get_balance_history,
     get_monthly_trend,
     get_projected_transactions,
-    get_spending_by_category,
     get_summary,
 )
 
@@ -160,155 +155,6 @@ async def test_summary_balance_projection_with_recurring(session, test_user, tes
     )
     assert summary is not None
     assert "BRL" in summary.total_balance
-
-
-# ---------------------------------------------------------------------------
-# Group splits: owner offset + viewer shared (summary 313-325, spending 496-535)
-# ---------------------------------------------------------------------------
-
-
-async def _make_group_with_members(session, owner_id, workspace_id, *, viewer_user_id=None):
-    """Create a group owned by owner_id with a self member and one other.
-    If viewer_user_id given, that other member is linked to viewer (invitee)."""
-    group = Group(
-        id=uuid.uuid4(), user_id=owner_id, workspace_id=workspace_id,
-        name="Trip", default_currency="BRL",
-    )
-    session.add(group)
-    await session.flush()
-    self_m = GroupMember(
-        id=uuid.uuid4(), group_id=group.id, workspace_id=workspace_id,
-        name="Me", linked_user_id=owner_id, is_self=True,
-    )
-    other_m = GroupMember(
-        id=uuid.uuid4(), group_id=group.id, workspace_id=workspace_id,
-        name="Friend", linked_user_id=viewer_user_id, is_self=False,
-    )
-    session.add_all([self_m, other_m])
-    await session.commit()
-    await session.refresh(group)
-    await session.refresh(self_m)
-    await session.refresh(other_m)
-    return group, self_m, other_m
-
-
-@pytest.mark.asyncio
-async def test_summary_owner_split_offset(session, test_user, test_workspace):
-    today = date.today()
-    month_start = today.replace(day=1)
-    acc = await _make_account(session, test_user.id, test_workspace.id, currency="BRL")
-    cat = await _make_category(session, test_user.id, test_workspace.id, "Dining")
-
-    group, self_m, other_m = await _make_group_with_members(
-        session, test_user.id, test_workspace.id
-    )
-
-    # Owner paid a 100 debit, split 50/50 with the friend (non-owner share = 50)
-    txn = await _add_txn(session, test_user.id, acc.id, test_workspace.id, 100, "debit", today, category_id=cat.id)
-    for member, amt in [(self_m, "50.00"), (other_m, "50.00")]:
-        session.add(TransactionSplit(
-            id=uuid.uuid4(), transaction_id=txn.id, workspace_id=test_workspace.id,
-            group_member_id=member.id, share_amount=Decimal(amt), share_type="exact",
-        ))
-    await session.commit()
-
-    summary = await get_summary(session, test_workspace.id, test_user.id, month=month_start)
-    # Only the owner's 50 share should count as expense, not the full 100
-    assert summary.monthly_expenses == pytest.approx(50.0, abs=0.01)
-
-    spending = await get_spending_by_category(session, test_workspace.id, test_user.id, month=month_start)
-    dining = next((s for s in spending if s.category_name == "Dining"), None)
-    assert dining is not None
-    assert dining.total == pytest.approx(50.0, abs=0.01)
-
-
-@pytest.mark.asyncio
-async def test_summary_viewer_shared_split(session, test_user, test_workspace, clean_db):
-    """Viewer participates (linked, non-self) in another user's split tx."""
-    today = date.today()
-    month_start = today.replace(day=1)
-
-    # Create the OWNER user (different from viewer test_user) and their workspace
-    import bcrypt as _bcrypt
-    from app.models.user import User as UserModel
-    from app.models.workspace import Workspace, WorkspaceMember
-
-    owner = UserModel(
-        id=uuid.uuid4(), email="owner_dash@example.com",
-        hashed_password=_bcrypt.hashpw(b"x", _bcrypt.gensalt()).decode(),
-        is_active=True, is_verified=True,
-        preferences={"currency_display": "BRL"},
-    )
-    session.add(owner)
-    await session.flush()
-    owner_ws = Workspace(
-        id=uuid.uuid4(), name="OwnerWS", kind="personal",
-        created_by_user_id=owner.id, default_currency="BRL", locale="en",
-    )
-    session.add(owner_ws)
-    await session.flush()
-    session.add(WorkspaceMember(id=uuid.uuid4(), workspace_id=owner_ws.id, user_id=owner.id, role="owner"))
-    await session.commit()
-
-    owner_acc = await _make_account(session, owner.id, owner_ws.id, currency="BRL")
-
-    # Group owned by `owner`; viewer (test_user) is a linked, non-self member.
-    group, self_m, viewer_m = await _make_group_with_members(
-        session, owner.id, owner_ws.id, viewer_user_id=test_user.id
-    )
-
-    # Owner's debit tx split: viewer owes 40 of a 100 expense
-    txn = await _add_txn(session, owner.id, owner_acc.id, owner_ws.id, 100, "debit", today)
-    cat = await _make_category(session, owner.id, owner_ws.id, "Shared")
-    txn.category_id = cat.id
-    await session.commit()
-    for member, amt in [(self_m, "60.00"), (viewer_m, "40.00")]:
-        session.add(TransactionSplit(
-            id=uuid.uuid4(), transaction_id=txn.id, workspace_id=owner_ws.id,
-            group_member_id=member.id, share_amount=Decimal(amt), share_type="exact",
-        ))
-    await session.commit()
-
-    # Viewer's summary should pick up their 40 shared expense (viewer_shared paths)
-    summary = await get_summary(session, test_workspace.id, test_user.id, month=month_start)
-    assert summary.monthly_expenses == pytest.approx(40.0, abs=0.01)
-
-    spending = await get_spending_by_category(session, test_workspace.id, test_user.id, month=month_start)
-    shared = next((s for s in spending if s.category_name == "Shared"), None)
-    assert shared is not None
-    assert shared.total == pytest.approx(40.0, abs=0.01)
-
-
-# ---------------------------------------------------------------------------
-# _compute_pending_shares_net (406-426)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_pending_shares_net_owned_group(session, test_user, test_workspace):
-    today = date.today()
-    acc = await _make_account(session, test_user.id, test_workspace.id, currency="BRL")
-    group, self_m, other_m = await _make_group_with_members(
-        session, test_user.id, test_workspace.id
-    )
-    # Owner paid 100, friend owes 50 -> friend's line is +50 (asset to owner)
-    txn = await _add_txn(session, test_user.id, acc.id, test_workspace.id, 100, "debit", today)
-    for member, amt in [(self_m, "50.00"), (other_m, "50.00")]:
-        session.add(TransactionSplit(
-            id=uuid.uuid4(), transaction_id=txn.id, workspace_id=test_workspace.id,
-            group_member_id=member.id, share_amount=Decimal(amt), share_type="exact",
-        ))
-    await session.commit()
-
-    net = await _compute_pending_shares_net(session, test_workspace.id, test_user.id, "BRL")
-    # Friend owes the owner -> positive net
-    assert net == pytest.approx(50.0, abs=0.5)
-
-
-@pytest.mark.asyncio
-async def test_pending_shares_net_no_groups(session, test_user, test_workspace):
-    net = await _compute_pending_shares_net(session, test_workspace.id, test_user.id, "BRL")
-    assert net == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------

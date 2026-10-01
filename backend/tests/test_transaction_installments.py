@@ -11,20 +11,16 @@ from decimal import Decimal
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from sqlalchemy import select
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
 from app.models.transaction import Transaction
-from app.models.transaction_split import TransactionSplit
-from app.schemas.group import GroupCreate, GroupMemberCreate
 from app.schemas.transaction import (
     InstallmentSeriesCreate,
     TransactionCreate,
     TransactionUpdate,
 )
-from app.schemas.transaction_split import TransactionSplitInput, TransactionSplitsInput
-from app.services import group_service
 from app.services.transaction_service import (
     create_installment_series,
     create_transaction,
@@ -301,54 +297,6 @@ async def test_create_installment_series_first_status_pending(
     )
     assert created[0].status == "pending"
     assert created[1].status == "pending"
-
-
-@pytest.mark.asyncio
-async def test_create_installment_series_applies_splits_per_parcel(
-    session: AsyncSession, test_user, test_workspace, installment_account
-):
-    # Split-with-group rides along on the series base; every parcel must be
-    # split the same way the single-transaction path does.
-    group = await group_service.create_group(
-        session, test_workspace.id, test_user.id, GroupCreate(name="Raid")
-    )
-    member_a = await group_service.create_member(
-        session, group.id, test_workspace.id, GroupMemberCreate(name="A")
-    )
-    member_b = await group_service.create_member(
-        session, group.id, test_workspace.id, GroupMemberCreate(name="B")
-    )
-    assert member_a is not None and member_b is not None
-    members = [member_a, member_b]
-
-    created = await create_installment_series(
-        session,
-        test_workspace.id,
-        test_user.id,
-        _series_payload(
-            installment_account,
-            installments=2,
-            base={
-                "splits": TransactionSplitsInput(
-                    share_type="equal",
-                    splits=[TransactionSplitInput(group_member_id=m.id) for m in members],
-                )
-            },
-        ),
-    )
-    assert len(created) == 2
-    for tx in created:
-        rows = (
-            await session.execute(
-                select(TransactionSplit).where(TransactionSplit.transaction_id == tx.id)
-            )
-        ).scalars().all()
-        assert len(rows) == 2
-        by_member = {r.group_member_id: r.share_amount for r in rows}
-        # base.amount is the per-parcel amount (100.00); split equally into
-        # two members = 50.00 each, matching the single-transaction path.
-        assert by_member[members[0].id] == Decimal("50.00")
-        assert by_member[members[1].id] == Decimal("50.00")
 
 
 @pytest.mark.asyncio

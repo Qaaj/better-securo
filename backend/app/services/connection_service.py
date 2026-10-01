@@ -20,7 +20,6 @@ from app.models.bank_connection import BankConnection
 from app.models.account import Account
 from app.models.category import Category
 from app.models.institution import Institution
-from app.models.goal import Goal
 from app.models.collection import collection_asset_groups
 from app.models.credit_card_bill import CreditCardBill
 from app.models.payee import Payee, PayeeMapping
@@ -651,8 +650,8 @@ async def _sync_holdings(
     # Sync owns its wallets: drop any it emptied by re-attribution above
     # (e.g. the single connection-named wallet that predates per-institution
     # ones). Wallets still holding assets — or used this run — are kept, and
-    # so is anything a goal tracks or a collection contains: deleting those
-    # would SET NULL the goal's target and CASCADE the membership away,
+    # so is anything a collection contains: deleting those
+    # would CASCADE the membership away,
     # silently breaking things the user built on the wallet.
     if holdings:
         await session.flush()
@@ -665,8 +664,7 @@ async def _sync_holdings(
                 continue
             referenced = await session.scalar(
                 select(
-                    exists().where(Goal.asset_group_id == gid)
-                    | exists()
+                    exists()
                     .select_from(collection_asset_groups)
                     .where(collection_asset_groups.c.asset_group_id == gid)
                 )

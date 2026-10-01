@@ -3,13 +3,10 @@ import {
   BarChart3,
   Building2,
   Landmark,
-  PiggyBank,
   Receipt,
   Repeat,
   SlidersHorizontal,
-  Split,
   Tag,
-  Target,
   Upload,
   Users,
 } from 'lucide-react'
@@ -43,12 +40,9 @@ export const navItems: NavItem[] = [
   { type: 'link', key: 'reports', path: '/reports', icon: BarChart3, module: 'reports' },
   { type: 'link', key: 'assets', path: '/assets', icon: Landmark, module: 'assets' },
   { type: 'separator', labelKey: 'nav.groupSetup' },
-  { type: 'link', key: 'budgets', path: '/budgets', icon: PiggyBank, module: 'budgets' },
-  { type: 'link', key: 'goals', path: '/goals', icon: Target, module: 'goals' },
   { type: 'link', key: 'recurring', path: '/recurring', icon: Repeat, module: 'recurring' },
   { type: 'link', key: 'categories', path: '/categories', icon: Tag, module: 'categories' },
   { type: 'link', key: 'payees', path: '/payees', icon: Users, module: 'payees' },
-  { type: 'link', key: 'splitGroups', path: '/groups', icon: Split, module: 'split_groups' },
   { type: 'link', key: 'rules', path: '/rules', icon: SlidersHorizontal, module: 'rules' },
 ]
 

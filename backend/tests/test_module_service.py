@@ -24,15 +24,12 @@ from app.services.module_service import (
 PERSONAL_MODULES = [
     "accounts",
     "assets",
-    "budgets",
     "categories",
-    "goals",
     "import",
     "payees",
     "recurring",
     "reports",
     "rules",
-    "split_groups",
     "transactions",
 ]
 

@@ -6,7 +6,6 @@ from sqlalchemy import func, or_, select, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.budget import Budget
 from app.models.category import Category
 from app.models.category_group import CategoryGroup
 from app.models.recurring_transaction import RecurringTransaction
@@ -264,7 +263,6 @@ class CategoryUsage:
     """
 
     transactions: int = 0
-    budgets: int = 0
     recurring_transactions: int = 0
     rules: list[Rule] = field(default_factory=list)
 
@@ -272,7 +270,6 @@ class CategoryUsage:
     def is_empty(self) -> bool:
         return not (
             self.transactions
-            or self.budgets
             or self.recurring_transactions
             or self.rules
         )
@@ -285,7 +282,6 @@ async def get_category_usage(
     counts: dict[str, int] = {}
     for key, model in (
         ("transactions", Transaction),
-        ("budgets", Budget),
         ("recurring_transactions", RecurringTransaction),
     ):
         result = await session.execute(
@@ -303,64 +299,6 @@ async def get_category_usage(
     )
     return CategoryUsage(**counts, rules=rules)
 
-
-async def _merge_budgets(
-    session: AsyncSession,
-    workspace_id: uuid.UUID,
-    category_id: uuid.UUID,
-    destination_id: uuid.UUID,
-) -> None:
-    """Move the budgets over, adding up the ones that would land on each other.
-
-    A budget is unique per user, category, month and kind, so moving one onto a
-    month the destination already budgets would break that constraint. The two
-    limits are added instead: they are the same person's ceiling for the same
-    month, and dropping either would quietly lower it.
-    """
-    moving = (
-        (
-            await session.execute(
-                select(Budget).where(
-                    Budget.workspace_id == workspace_id,
-                    Budget.category_id == category_id,
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    if not moving:
-        return
-
-    existing = (
-        (
-            await session.execute(
-                select(Budget).where(
-                    Budget.workspace_id == workspace_id,
-                    Budget.category_id == destination_id,
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    by_slot = {(b.user_id, b.month, b.is_recurring): b for b in existing}
-
-    for budget in moving:
-        slot = (budget.user_id, budget.month, budget.is_recurring)
-        target = by_slot.get(slot)
-        if target is None:
-            budget.category_id = destination_id
-            by_slot[slot] = budget
-            continue
-
-        target.amount += budget.amount
-        # The converted amount is only a sum when both sides carry one.
-        if target.amount_primary is not None and budget.amount_primary is not None:
-            target.amount_primary += budget.amount_primary
-        else:
-            target.amount_primary = None
-        await session.delete(budget)
 
 
 async def _repoint_rules(
@@ -408,7 +346,6 @@ async def _transfer_category_references(
             )
             .values(category_id=destination_id)
         )
-    await _merge_budgets(session, workspace_id, category_id, destination_id)
     await _repoint_rules(session, workspace_id, category_id, destination_id)
 
 
@@ -422,7 +359,7 @@ async def delete_category(
     """Delete a category, optionally moving what it holds to another one.
 
     Without a destination the deletion only goes through when nothing points at
-    the category. With one, the transactions, budgets, recurring entries and
+    the category. With one, the transactions, recurring entries and
     rules are moved first, in the same transaction as the deletion, so the
     history survives and nothing is left pointing at an id that is gone.
     """

@@ -16,7 +16,7 @@ from app.core.workspace_context import (
     current_workspace,
     current_writable_workspace,
 )
-from app.schemas.transaction import BulkAddToGroupRequest, BulkCategorizeRequest, BulkTagsRequest, CreateCounterpartRequest, InstallmentSeriesCreate, LinkTransferRequest, TransactionBulkDeleteRequest, TransactionCreate, TransactionRead, TransactionUpdate, TransferCreate, TransferRead
+from app.schemas.transaction import BulkCategorizeRequest, BulkTagsRequest, CreateCounterpartRequest, InstallmentSeriesCreate, LinkTransferRequest, TransactionBulkDeleteRequest, TransactionCreate, TransactionRead, TransactionUpdate, TransferCreate, TransferRead
 from app.schemas.transaction_calendar import TransactionCalendarResponse
 from app.services import transaction_service
 from app.services.admin_service import get_credit_card_accounting_mode
@@ -117,7 +117,6 @@ async def list_transactions(
     from_date: Optional[date] = Query(None, alias="from"),
     to_date: Optional[date] = Query(None, alias="to"),
     bill_id: Optional[uuid.UUID] = Query(None, description="Filter by credit-card bill (issue #92); takes precedence over from/to"),
-    group_id: Optional[uuid.UUID] = Query(None, description="Filter to transactions split through this group; widens visibility for linked members"),
     unbilled_only: bool = Query(False, description="Cycle-math fallback only: exclude txs already linked to any bill (used for in-progress CC cycles)"),
     q: Optional[str] = Query(None),
     uncategorized: bool = Query(False),
@@ -151,7 +150,6 @@ async def list_transactions(
         accounting_mode=accounting_mode,
         tags=tags,
         bill_id=bill_id,
-        group_id=group_id,
         unbilled_only=unbilled_only,
         sort_by=sort_by,
         sort_dir=sort_dir,
@@ -296,26 +294,6 @@ async def bulk_remove_tags(
         session, ctx.workspace.id, data.transaction_ids, data.tags
     )
     return {"updated": count}
-
-
-@router.patch("/bulk-add-to-group")
-async def bulk_add_to_group(
-    data: BulkAddToGroupRequest,
-    ctx: WorkspaceContext = Depends(current_writable_workspace),
-    session: AsyncSession = Depends(get_async_session),
-):
-    try:
-        return await transaction_service.bulk_add_to_group(
-            session,
-            ctx.workspace.id,
-            ctx.user_id,
-            data.transaction_ids,
-            data.group_id,
-            share_type=data.share_type,
-            member_splits=data.member_splits,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.post("/transfer", response_model=TransferRead, status_code=status.HTTP_201_CREATED)

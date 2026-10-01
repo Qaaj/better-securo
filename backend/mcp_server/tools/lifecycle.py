@@ -1,7 +1,7 @@
-"""Lifecycle entities — recurring transactions, assets, goals, budgets.
+"""Lifecycle entities — recurring transactions and assets.
 
-These come up in 'do I have any subscriptions?' / 'how are my goals
-going?' / 'list my investments' type questions. Surfacing them as
+These come up in 'do I have any subscriptions?' / 'list my
+investments' type questions. Surfacing them as
 first-class tools keeps the agent from falling back to text search.
 """
 from __future__ import annotations
@@ -10,10 +10,10 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services import asset_service, budget_service, goal_service, recurring_transaction_service
+from app.services import asset_service, recurring_transaction_service
 from mcp_server.auth import CallContext
 from mcp_server.registry import tool
-from mcp_server.tools._helpers import num, parse_date, resolve_workspace_id
+from mcp_server.tools._helpers import num, resolve_workspace_id
 
 
 @tool(
@@ -94,73 +94,3 @@ async def list_assets(
     return {"items": items, "total": len(items)}
 
 
-@tool(
-    name="list_goals",
-    description=(
-        "List the user's savings / financial goals with target, current "
-        "amount, deadline, and progress. Use for 'how are my goals "
-        "going?' / 'am I on track?'."
-    ),
-    parameters={
-        "type": "object",
-        "properties": {
-            "status": {"type": "string", "description": "Filter by status (e.g. 'active', 'completed')"},
-        },
-        "additionalProperties": False,
-    },
-    tags=["read", "goals"],
-)
-async def list_goals(
-    *, session: AsyncSession, ctx: CallContext, status: str | None = None
-) -> dict[str, Any]:
-    ws_id = await resolve_workspace_id(session, ctx)
-    rows = await goal_service.get_goals(session, ws_id, ctx.user_id, status=status)
-    items: list[dict[str, Any]] = []
-    for r in rows:
-        d = r.model_dump(mode="json") if hasattr(r, "model_dump") else dict(r.__dict__)
-        items.append({
-            "id": str(d.get("id")) if d.get("id") else None,
-            "name": d.get("name"),
-            "target_amount": num(d.get("target_amount")),
-            "current_amount": num(d.get("current_amount")),
-            "currency": d.get("currency"),
-            "deadline": d.get("deadline"),
-            "status": d.get("status"),
-            "progress_pct": num(d.get("progress_pct")),
-            "category_id": str(d.get("category_id")) if d.get("category_id") else None,
-        })
-    return {"items": items, "total": len(items)}
-
-
-@tool(
-    name="list_budgets",
-    description=(
-        "List the raw budget rows (category + monthly amount). For "
-        "spending vs budget comparison use get_budget_vs_actual instead."
-    ),
-    parameters={
-        "type": "object",
-        "properties": {
-            "month": {"type": "string", "format": "date", "description": "Any date inside the target month; omit for all months"},
-        },
-        "additionalProperties": False,
-    },
-    tags=["read", "budgets"],
-)
-async def list_budgets(
-    *, session: AsyncSession, ctx: CallContext, month: str | None = None
-) -> dict[str, Any]:
-    target = parse_date(month)
-    ws_id = await resolve_workspace_id(session, ctx)
-    rows = await budget_service.get_budgets(session, ws_id, month=target)
-    items = [
-        {
-            "id": str(b.id),
-            "category_id": str(b.category_id) if b.category_id else None,
-            "amount": num(b.amount),
-            "month": b.month.isoformat() if getattr(b, "month", None) else None,
-            "is_recurring": bool(getattr(b, "is_recurring", False)),
-        }
-        for b in rows
-    ]
-    return {"items": items, "total": len(items)}

@@ -15,7 +15,7 @@ async def global_search(
     ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Global search across transactions, accounts, payees, categories, goals and assets.
+    """Global search across transactions, accounts, payees, categories and assets.
 
     Used by the command palette (Cmd/Ctrl+K). Returns a flat list of
     typed hits limited to ``limit`` results per entity type.

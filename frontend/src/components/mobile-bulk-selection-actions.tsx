@@ -1,5 +1,5 @@
 import type { Category, CategoryGroup } from '@/types'
-import { ArrowLeftRight, Check, MoreHorizontal, SlidersHorizontal, Trash2, Users, X } from 'lucide-react'
+import { ArrowLeftRight, Check, MoreHorizontal, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { CategorySelect } from '@/components/category-select'
 import { Button } from '@/components/ui/button'
@@ -16,14 +16,12 @@ export type MobileBulkSelectionActionsProps = {
   categories: Category[]
   categoryGroups: CategoryGroup[]
   categoryPending: boolean
-  groupPending: boolean
   tagInput: string
   addTagsPending: boolean
   removeTagsPending: boolean
   transferDisabled: boolean
   transferTitle: string
   onCategoryChange: (value: string) => void
-  onOpenGroup: () => void
   onOpenTransfer: () => void
   onCreateRule?: () => void
   onBulkDelete: () => void
@@ -96,9 +94,6 @@ function BulkActionItems(props: MobileBulkSelectionActionsProps) {
   const { t } = useTranslation()
   return (
     <>
-      <DropdownMenuItem disabled={props.groupPending} onSelect={props.onOpenGroup}>
-        <Users size={15} />{t('transactions.addToGroup')}
-      </DropdownMenuItem>
       <DropdownMenuItem disabled={props.transferDisabled} title={props.transferTitle} onSelect={props.onOpenTransfer}>
         <ArrowLeftRight size={15} />{t('transactions.linkAsTransfer')}
       </DropdownMenuItem>

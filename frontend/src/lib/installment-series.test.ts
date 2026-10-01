@@ -18,7 +18,6 @@ const base: InstallmentSeriesFormInput = {
   currency: 'BRL',
   notes: '',
   fxFields: { amount_primary: 150, fx_rate_used: 1 },
-  splits: null,
   installmentCount: '3',
   installmentFrequency: 'monthly',
   status: 'posted',
@@ -88,15 +87,6 @@ describe('buildInstallmentSeriesInput', () => {
     expect(payload.base.fx_rate_used).toBe(0.8)
   })
 
-  it('rides split-with-group through to the base', () => {
-    const splits = {
-      share_type: 'equal' as const,
-      splits: [{ group_member_id: 'member-1' }],
-    }
-    const payload = buildInstallmentSeriesInput({ ...base, splits })
-    expect(payload.base.splits).toEqual(splits)
-  })
-
   it('normalizes whitespace-only notes to null', () => {
     const payload = buildInstallmentSeriesInput({ ...base, notes: '   ' })
     expect(payload.base.notes).toBeNull()
@@ -163,7 +153,6 @@ const original = {
   fx_rate_used: '1',
   effective_bill_date: null,
   is_ignored: false,
-  splits: [],
 } as unknown as Transaction
 
 // The form dialog always sends a full payload, with status toggled.
@@ -213,57 +202,5 @@ describe('hasNonStatusChange', () => {
       account_id: undefined,
     }
     expect(hasNonStatusChange(data, { ...original, payee_id: null, account_id: null })).toBe(false)
-  })
-
-  it('treats an untouched split group as unchanged', () => {
-    const splitOriginal = {
-      ...original,
-      splits: [
-        {
-          id: 's1',
-          transaction_id: 'tx-1',
-          group_member_id: 'member-1',
-          share_amount: '50.00',
-          share_pct: 33.3333,
-          share_type: 'equal',
-          notes: null,
-          created_at: '2026-08-06T00:00:00Z',
-        },
-      ],
-    } as unknown as Transaction
-    const splitPayload = {
-      ...statusOnlyPayload,
-      splits: {
-        share_type: 'equal' as const,
-        splits: [{ group_member_id: 'member-1', share_amount: 50, share_pct: 33.3333 }],
-      },
-    }
-    expect(hasNonStatusChange(splitPayload, splitOriginal)).toBe(false)
-  })
-
-  it('detects a changed split group', () => {
-    const splitOriginal = {
-      ...original,
-      splits: [
-        {
-          id: 's1',
-          transaction_id: 'tx-1',
-          group_member_id: 'member-1',
-          share_amount: '50.00',
-          share_pct: 33.3333,
-          share_type: 'equal',
-          notes: null,
-          created_at: '2026-08-06T00:00:00Z',
-        },
-      ],
-    } as unknown as Transaction
-    const splitPayload = {
-      ...statusOnlyPayload,
-      splits: {
-        share_type: 'equal' as const,
-        splits: [{ group_member_id: 'member-1', share_amount: 100, share_pct: 66.6666 }],
-      },
-    }
-    expect(hasNonStatusChange(splitPayload, splitOriginal)).toBe(true)
   })
 })

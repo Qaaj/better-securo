@@ -15,16 +15,13 @@ describe('MODULE_IDS', () => {
       [
         'accounts',
         'assets',
-        'budgets',
         'categories',
-        'goals',
         'import',
         'invoices',
         'payees',
         'recurring',
         'reports',
         'rules',
-        'split_groups',
         'transactions',
       ].sort(),
     )

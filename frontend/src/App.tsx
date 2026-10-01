@@ -25,14 +25,10 @@ const ImportPage = lazy(() => import('@/pages/import'))
 const RulesPage = lazy(() => import('@/pages/rules'))
 const CategoriesPage = lazy(() => import('@/pages/categories'))
 const CollectionsPage = lazy(() => import('@/pages/collections'))
-const BudgetsPage = lazy(() => import('@/pages/budgets'))
 const RecurringPage = lazy(() => import('@/pages/recurring'))
-const GoalsPage = lazy(() => import('@/pages/goals'))
 const AssetsPage = lazy(() => import('@/pages/assets'))
 const ReportsPage = lazy(() => import('@/pages/reports'))
 const PayeesPage = lazy(() => import('@/pages/payees'))
-const GroupsPage = lazy(() => import('@/pages/groups'))
-const GroupDetailPage = lazy(() => import('@/pages/group-detail'))
 const AdminSettingsPage = lazy(() => import('@/pages/admin/settings'))
 const AgentsListPage = lazy(() => import('@/pages/agents-list'))
 const AgentDetailPage = lazy(() => import('@/pages/agent-detail'))
@@ -104,16 +100,12 @@ function App() {
                   <Route path="/rules" element={<ModuleRoute module="rules"><RulesPage /></ModuleRoute>} />
                   <Route path="/categories" element={<ModuleRoute module="categories"><CategoriesPage /></ModuleRoute>} />
                   <Route path="/collections" element={<CollectionsPage />} />
-                  <Route path="/budgets" element={<ModuleRoute module="budgets"><BudgetsPage /></ModuleRoute>} />
-                  <Route path="/goals" element={<ModuleRoute module="goals"><GoalsPage /></ModuleRoute>} />
                   <Route path="/recurring" element={<ModuleRoute module="recurring"><RecurringPage /></ModuleRoute>} />
                   <Route path="/assets" element={<ModuleRoute module="assets"><AssetsPage /></ModuleRoute>} />
                   {/* Kept so links minted before the importers were merged keep working. */}
                   <Route path="/assets/import" element={<Navigate to="/import?tab=investments" replace />} />
                   <Route path="/reports" element={<ModuleRoute module="reports"><ReportsPage /></ModuleRoute>} />
                   <Route path="/payees" element={<ModuleRoute module="payees"><PayeesPage /></ModuleRoute>} />
-                  <Route path="/groups" element={<ModuleRoute module="split_groups"><GroupsPage /></ModuleRoute>} />
-                  <Route path="/groups/:id" element={<ModuleRoute module="split_groups"><GroupDetailPage /></ModuleRoute>} />
                   <Route path="/invoices" element={<ModuleRoute module="invoices"><InvoicesPage /></ModuleRoute>} />
                   {/* Declared before `/invoices/:id`, which would otherwise take "schedules" for an id. */}
                   <Route path="/invoices/schedules" element={<ModuleRoute module="invoices"><InvoiceSchedulesPage /></ModuleRoute>} />

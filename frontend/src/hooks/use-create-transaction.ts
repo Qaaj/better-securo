@@ -77,8 +77,6 @@ export function useCreateTransaction({ onDone }: { onDone: () => void }) {
     onSuccess: (_created, variables) => {
       invalidateFinancialQueries(queryClient)
       queryClient.invalidateQueries({ queryKey: ['recurring'] })
-      // Goals tracking an account follow its balance.
-      queryClient.invalidateQueries({ queryKey: ['goals'] })
       toast.success(t('transactions.created'))
       if (variables.action === 'saveAndNew') {
         resetForm(null)

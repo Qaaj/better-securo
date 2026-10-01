@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { dashboard, transactions, budgets, categories as categoriesApi, categoryGroups as categoryGroupsApi, accounts as accountsApi, goals as goalsApi, groups as groupsApi, payees as payeesApi, rules as rulesApi } from '@/lib/api'
+import { dashboard, transactions, categories as categoriesApi, categoryGroups as categoryGroupsApi, accounts as accountsApi, payees as payeesApi, rules as rulesApi } from '@/lib/api'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -38,9 +38,8 @@ import {
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { CheckCircle2, CalendarIcon, Clock, Paperclip, Target, ArrowUpDown, HelpCircle, EyeClosed, AlertCircle } from 'lucide-react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ICON_MAP } from '@/lib/category-icons'
+import { CheckCircle2, CalendarIcon, Clock, Paperclip, ArrowUpDown, HelpCircle, EyeClosed, AlertCircle } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/page-header'
 import { CategoryIcon } from '@/components/category-icon'
 import { AccountIcon } from '@/components/account-icon'
@@ -92,7 +91,6 @@ function parseMonthFromParams(params: URLSearchParams): string | null {
 
 export default function DashboardPage() {
   const { t, i18n } = useTranslation()
-  const navigate = useNavigate()
   const { mask, privacyMode, MASK } = usePrivacyMode()
   const isMobile = useIsMobile()
   const { user } = useAuth()
@@ -230,26 +228,9 @@ export default function DashboardPage() {
     }),
   })
 
-  // Resolve group_id → name for the badge on split transactions.
-  const { data: allGroups } = useQuery({
-    queryKey: ['groups', 'all'],
-    queryFn: () => groupsApi.list(true),
-    staleTime: 60_000,
-  })
-  const groupNameById = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const g of allGroups ?? []) map.set(g.id, g.name)
-    return map
-  }, [allGroups])
-
   const { data: projectedTxs, isLoading: projectedTxLoading } = useQuery({
     queryKey: ['dashboard', 'projected-transactions', selectedMonth],
     queryFn: () => dashboard.projectedTransactions({ month: monthParam }),
-  })
-
-  const { data: budgetComparison } = useQuery({
-    queryKey: ['budgets', 'comparison', selectedMonth],
-    queryFn: () => budgets.comparison(monthParam),
   })
 
   const { data: categoriesList } = useQuery({
@@ -270,11 +251,6 @@ export default function DashboardPage() {
   const { data: payeesList } = useQuery({
     queryKey: ['payees'],
     queryFn: payeesApi.list,
-  })
-
-  const { data: goalsSummary } = useQuery({
-    queryKey: ['goals', 'summary'],
-    queryFn: () => goalsApi.summary(3),
   })
 
   const updateMutation = useMutation({
@@ -446,42 +422,25 @@ export default function DashboardPage() {
   // Merged category bars data
   const mergedCategories = useMemo(() => {
     if (!spending) return []
-    const budgetMap = new Map<string, (typeof budgetComparison extends (infer T)[] | undefined ? T : never)>()
-    if (budgetComparison) {
-      for (const b of budgetComparison) {
-        budgetMap.set(b.category_id, b)
-      }
-    }
     return spending
       .filter(s => s.category_id !== null)
       .map(s => {
-        const budget = s.category_id ? budgetMap.get(s.category_id) : undefined
         // The category widget must show the same spend set as its drill-down:
         // settled transactions plus pending/future rows and recurring
         // projections. The API keeps `total` as settled-only for callers that
         // need the actual/forecast split, while `projected_total` is the
         // user-visible all-in amount.
         const actual = s.projected_total
-        const prevAmount = budget ? Number(budget.projected_prev_month_amount) : 0
-        let momPct: number | null = null
-        if (prevAmount > 0) {
-          momPct = ((actual - prevAmount) / prevAmount) * 100
-        } else if (actual > 0) {
-          momPct = 100
-        }
         return {
           category_id: s.category_id!,
           category_name: s.category_name,
           category_icon: s.category_icon,
           category_color: s.category_color,
           actual,
-          budget_amount: budget ? Number(budget.budget_amount) : null,
-          percentage_used: budget?.percentage_used ?? null,
-          momPct,
         }
       })
       .sort((a, b) => catSortDesc ? b.actual - a.actual : a.actual - b.actual)
-  }, [spending, budgetComparison, catSortDesc])
+  }, [spending, catSortDesc])
 
   const [txPage, setTxPage] = useState(1)
   const [txSortDesc, setTxSortDesc] = useState(true)
@@ -501,15 +460,6 @@ export default function DashboardPage() {
     accountId: string | null
     isProjected: boolean
     attachmentCount: number
-    isShared: boolean
-    parentTotal: number | null
-    // Owner-side: this user's share of a split they own. Null when
-    // they're not in the split, or when share == amount (would be a
-    // redundant secondary line).
-    ownerShare: number | null
-    groupId: string | null
-    parentOwnerName: string | null
-    groupName: string | null
     isIgnored: boolean
     installmentNumber: number | null
     totalInstallments: number | null
@@ -527,25 +477,12 @@ export default function DashboardPage() {
   const allDisplayRows = useMemo(() => {
     const rows: DisplayRow[] = []
     for (const tx of currentMonthTxs?.items ?? []) {
-      const isShared = !!tx.is_shared
-      const displayAmount =
-        isShared && tx.viewer_share != null ? Number(tx.viewer_share) : Number(tx.amount)
-      const groupId = tx.group_id ?? null
-      // Owner-side share: backend populates viewer_share for owners
-      // who participate in their own split. Suppress when it equals
-      // the parent amount (sole-member case = no useful info).
-      const ownerShareRaw =
-        !isShared && tx.viewer_share != null ? Number(tx.viewer_share) : null
-      const ownerShare =
-        ownerShareRaw != null && Math.abs(ownerShareRaw) !== Math.abs(Number(tx.amount))
-          ? ownerShareRaw
-          : null
       rows.push({
         key: tx.id,
         description: tx.description,
         date: tx.date,
         type: tx.type,
-        amount: displayAmount,
+        amount: Number(tx.amount),
         amountPrimary: tx.amount_primary != null ? Number(tx.amount_primary) : null,
         currency: tx.currency,
         categoryIcon: tx.category?.icon ?? null,
@@ -554,12 +491,6 @@ export default function DashboardPage() {
         accountId: tx.account_id ?? null,
         isProjected: false,
         attachmentCount: tx.attachment_count ?? 0,
-        isShared,
-        parentTotal: isShared ? Number(tx.amount) : null,
-        ownerShare,
-        groupId,
-        parentOwnerName: isShared ? tx.parent_owner_name ?? null : null,
-        groupName: groupId ? groupNameById.get(groupId) ?? null : null,
         isIgnored: tx.is_ignored,
         installmentNumber: tx.installment_number,
         totalInstallments: tx.total_installments,
@@ -581,12 +512,6 @@ export default function DashboardPage() {
         accountId: pt.account_id,
         isProjected: true,
         attachmentCount: 0,
-        isShared: false,
-        parentTotal: null,
-        ownerShare: null,
-        groupId: null,
-        parentOwnerName: null,
-        groupName: null,
         isIgnored: false,
         installmentNumber: null,
         totalInstallments: null,
@@ -595,7 +520,7 @@ export default function DashboardPage() {
     }
     rows.sort((a, b) => txSortDesc ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date))
     return rows
-  }, [currentMonthTxs, projectedTxs, txSortDesc, groupNameById])
+  }, [currentMonthTxs, projectedTxs, txSortDesc])
 
   const txTotalPages = Math.ceil(allDisplayRows.length / txPerPage)
   const pagedRows = allDisplayRows.slice((txPage - 1) * txPerPage, txPage * txPerPage)
@@ -704,26 +629,6 @@ export default function DashboardPage() {
                     )
                   })}
                 </div>
-              )}
-              {/* Net of pending group shares — show only when meaningfully
-                  nonzero so users without groups see the same UI as before. */}
-              {summary && Math.abs(summary.pending_shares_net) >= 0.01 && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <p className="text-xs tabular-nums mt-2.5 inline-block cursor-help text-muted-foreground underline decoration-dotted underline-offset-2">
-                      {summary.pending_shares_net < 0
-                        ? t('dashboard.pendingSharesOwe', {
-                            net: mask(formatCurrency(availableBalance + summary.pending_shares_net, primaryCurrency, locale)),
-                            owed: mask(formatCurrency(Math.abs(summary.pending_shares_net), primaryCurrency, locale)),
-                          })
-                        : t('dashboard.pendingSharesOwed', {
-                            net: mask(formatCurrency(availableBalance + summary.pending_shares_net, primaryCurrency, locale)),
-                            owed: mask(formatCurrency(summary.pending_shares_net, primaryCurrency, locale)),
-                          })}
-                    </p>
-                  </TooltipTrigger>
-                  <TooltipContent>{t('dashboard.pendingSharesTooltip')}</TooltipContent>
-                </Tooltip>
               )}
             </>
           )}
@@ -927,12 +832,6 @@ export default function DashboardPage() {
             ) : mergedCategories.length > 0 ? (
               <div className="space-y-1.5">
                 {mergedCategories.map((item) => {
-                  const hasBudget = item.budget_amount != null && item.budget_amount > 0
-                  const pct = item.percentage_used
-                  const barColor = hasBudget
-                    ? pct! > 100 ? 'bg-rose-500' : pct! >= 80 ? 'bg-amber-400' : 'bg-emerald-500'
-                    : 'bg-muted-foreground/20'
-
                   return (
                     <div
                       key={item.category_id}
@@ -952,30 +851,8 @@ export default function DashboardPage() {
                             <span className="text-sm font-semibold text-foreground truncate">{item.category_name}</span>
                             <div className="flex items-center gap-2 shrink-0">
                               <span className="text-sm font-bold tabular-nums text-foreground">{mask(formatCurrency(item.actual, userCurrency, locale))}</span>
-                              {item.momPct !== null && (
-                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold tabular-nums ${
-                                  item.momPct > 0 ? 'bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400' : item.momPct < 0 ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-muted text-muted-foreground'
-                                }`}>
-                                  {item.momPct > 0 ? '\u2191' : item.momPct < 0 ? '\u2193' : '='}{Math.abs(item.momPct).toFixed(0)}%
-                                </span>
-                              )}
                             </div>
                           </div>
-                          {hasBudget && (
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 h-1.5 bg-muted/60 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all ${barColor}`}
-                                  style={{ width: `${Math.min(pct!, 100)}%` }}
-                                />
-                              </div>
-                              <span className={`text-[11px] tabular-nums font-medium shrink-0 ${
-                                pct! > 100 ? 'text-rose-500' : pct! >= 80 ? 'text-amber-500' : 'text-muted-foreground'
-                              }`}>
-                                {mask(t('dashboard.ofBudget', { budget: formatCurrency(item.budget_amount!, userCurrency, locale) }))}
-                              </span>
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -1145,77 +1022,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Goals Progress Widget */}
-      {goalsSummary && goalsSummary.length > 0 && (
-        <div className="bg-card rounded-xl border border-border shadow-sm mb-5">
-          <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-            <p className="text-sm font-semibold text-foreground">{t('goals.dashboardTitle')}</p>
-            <Link to="/goals" className="text-xs font-medium text-primary hover:underline">
-              {t('goals.viewAll')} &rarr;
-            </Link>
-          </div>
-          <div className="divide-y divide-border">
-            {goalsSummary.map((goal) => {
-              const progressColor = goal.percentage >= 100
-                ? 'bg-emerald-500'
-                : goal.percentage >= 60
-                  ? 'bg-blue-500'
-                  : goal.percentage >= 30
-                    ? 'bg-amber-400'
-                    : 'bg-muted-foreground/30'
-              const onTrackConfig: Record<string, { cls: string; key: string }> = {
-                ahead: { cls: 'text-emerald-600', key: 'goals.onTrackAhead' },
-                on_track: { cls: 'text-blue-600', key: 'goals.onTrackOnTrack' },
-                behind: { cls: 'text-amber-600', key: 'goals.onTrackBehind' },
-                overdue: { cls: 'text-rose-600', key: 'goals.onTrackOverdue' },
-                achieved: { cls: 'text-emerald-600', key: 'goals.onTrackAchieved' },
-              }
-              const otc = goal.on_track ? onTrackConfig[goal.on_track] : null
-              const GoalIcon = (goal.icon && ICON_MAP[goal.icon]) || Target
-              return (
-                <div key={goal.id} className="px-5 py-3 flex items-center gap-4">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-white"
-                    style={{ backgroundColor: goal.color ?? '#6B7280' }}
-                  >
-                    <GoalIcon size={14} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-sm font-medium text-foreground truncate">{goal.name}</span>
-                      <span className="text-xs font-bold tabular-nums text-foreground shrink-0">
-                        {mask(formatCurrency(goal.current_amount, goal.currency, locale))} / {mask(formatCurrency(goal.target_amount, goal.currency, locale))}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-muted/60 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${progressColor}`}
-                          style={{ width: `${Math.min(goal.percentage, 100)}%` }}
-                        />
-                      </div>
-                      <span className="text-[11px] font-bold tabular-nums text-muted-foreground shrink-0">
-                        {goal.percentage.toFixed(0)}%
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
-                      {goal.monthly_contribution != null && goal.monthly_contribution > 0 && (
-                        <span className="tabular-nums">
-                          {mask(formatCurrency(goal.monthly_contribution, goal.currency, locale))}{t('goals.perMonth')}
-                        </span>
-                      )}
-                      {otc && (
-                        <span className={`font-medium ${otc.cls}`}>{t(otc.key)}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Period Transactions */}
       <div>
         {/* One control bar for both views, so the switch never moves between them. */}
@@ -1275,10 +1081,6 @@ export default function DashboardPage() {
                       }`}
                       onClick={() => {
                         if (row.isProjected) return
-                        if (row.isShared) {
-                          if (row.groupId) navigate(`/groups/${row.groupId}`)
-                          return
-                        }
                         const tx = currentMonthTxs?.items.find((t) => t.id === row.key)
                         if (tx) { setEditingTx(tx); setDialogOpen(true) }
                       }}
@@ -1292,13 +1094,6 @@ export default function DashboardPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <p className="text-sm font-semibold text-foreground truncate leading-tight">{row.description}</p>
-                          {row.groupId && (
-                            <span className="inline-flex items-center text-[9px] font-semibold uppercase tracking-wide text-violet-700 bg-violet-50 border border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900 px-1 py-0.5 rounded-full shrink-0">
-                              {row.isShared && row.parentOwnerName
-                                ? t('splitGroups.sharedShortBadgeAuthor', { author: row.parentOwnerName })
-                                : row.groupName ?? t('splitGroups.sharedShortBadge')}
-                            </span>
-                          )}
                           {row.isProjected && (
                             <ProjectedTransactionBadge />
                           )}
@@ -1342,21 +1137,7 @@ export default function DashboardPage() {
                         <span className={`text-sm font-bold tabular-nums ${row.isIgnored ? 'text-gray-500' : row.type === 'credit' ? 'text-emerald-600' : 'text-rose-500'}`}>
                           {mask(`${row.isIgnored ? ' ' : row.type === 'credit' ? '+' : '\u2212'}${formatCurrency(Math.abs(row.amount), row.currency, locale)}`)}
                         </span>
-                        {row.isShared && row.parentTotal != null && (
-                          <div className="text-[10px] text-muted-foreground tabular-nums mt-0.5">
-                            {t('splitGroups.sharedRowParent', {
-                              total: formatCurrency(Math.abs(row.parentTotal), row.currency, locale),
-                            })}
-                          </div>
-                        )}
-                        {!row.isShared && row.ownerShare != null && (
-                          <div className="text-[10px] text-muted-foreground tabular-nums mt-0.5">
-                            {t('splitGroups.ownerRowYourShare', {
-                              share: formatCurrency(Math.abs(row.ownerShare), row.currency, locale),
-                            })}
-                          </div>
-                        )}
-                        {!row.isShared && row.currency !== userCurrency && row.amountPrimary != null && (
+                        {row.currency !== userCurrency && row.amountPrimary != null && (
                           <div className="text-[10px] text-muted-foreground tabular-nums mt-0.5">
                             {mask(formatCurrency(Math.abs(row.amountPrimary), userCurrency, locale))}
                           </div>
@@ -1382,18 +1163,10 @@ export default function DashboardPage() {
                       className={`border-b border-border last:border-0 ${
                         row.isProjected
                           ? ''
-                          : row.isShared
-                            ? 'cursor-pointer hover:bg-muted'
-                            : 'cursor-pointer hover:bg-muted'
+                          : 'cursor-pointer hover:bg-muted'
                       }`}
                       onClick={() => {
                         if (row.isProjected) return
-                        if (row.isShared) {
-                          // Shared rows belong to another user — open the
-                          // group instead of the (locked) edit dialog.
-                          if (row.groupId) navigate(`/groups/${row.groupId}`)
-                          return
-                        }
                         const tx = currentMonthTxs?.items.find((t) => t.id === row.key)
                         if (tx) { setEditingTx(tx); setDialogOpen(true) }
                       }}
@@ -1407,13 +1180,6 @@ export default function DashboardPage() {
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <p className="text-sm font-semibold text-foreground truncate">{row.description}</p>
-                              {row.groupId && (
-                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 shrink-0 uppercase tracking-wide">
-                                  {row.isShared && row.parentOwnerName
-                                    ? t('splitGroups.sharedShortBadgeAuthor', { author: row.parentOwnerName })
-                                    : row.groupName ?? t('splitGroups.sharedShortBadge')}
-                                </span>
-                              )}
                               {row.isProjected && (
                                 <ProjectedTransactionBadge />
                               )}
@@ -1463,21 +1229,7 @@ export default function DashboardPage() {
                         <span className={`text-sm font-semibold tabular-nums ${row.isIgnored ? 'text-gray-500' : row.type === 'credit' ? 'text-emerald-600' : 'text-rose-500'}`}>
                           {mask(`${row.isIgnored ? ' ' : row.type === 'credit' ? '+' : '-'}${formatCurrency(Math.abs(row.amount), row.currency, locale)}`)}
                         </span>
-                        {row.isShared && row.parentTotal != null && (
-                          <span className="block text-[10px] text-muted-foreground tabular-nums">
-                            {t('splitGroups.sharedRowParent', {
-                              total: formatCurrency(Math.abs(row.parentTotal), row.currency, locale),
-                            })}
-                          </span>
-                        )}
-                        {!row.isShared && row.ownerShare != null && (
-                          <span className="block text-[10px] text-muted-foreground tabular-nums">
-                            {t('splitGroups.ownerRowYourShare', {
-                              share: formatCurrency(Math.abs(row.ownerShare), row.currency, locale),
-                            })}
-                          </span>
-                        )}
-                        {!row.isShared && row.currency !== userCurrency && row.amountPrimary != null && (
+                        {row.currency !== userCurrency && row.amountPrimary != null && (
                           <span className="block text-[10px] text-muted-foreground tabular-nums">
                             {mask(formatCurrency(Math.abs(row.amountPrimary), userCurrency, locale))}
                           </span>
