@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Plus, Save, Trash2 } from 'lucide-react'
-import { annualGrowthPercent, assetFixedMonthly, assetValue, computeRetirement } from '@/lib/retirement'
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Download, Plus, Save, Trash2 } from 'lucide-react'
+import { annualGrowthPercent, assetFixedMonthly, assetValue, computeRetirement, type IncomeLine, type OutgoingLine } from '@/lib/retirement'
 import {
   defaultDrawable,
   projectRetirement,
@@ -11,31 +11,54 @@ import {
   type WhatIf,
 } from '@/lib/retirement-projection'
 import { formatCurrency } from '@/lib/format'
+import { downloadText, printHtml } from '@/lib/download'
+import { buildReport, describeWhatIf, reportToHtml, reportToMarkdown } from '@/lib/retirement-report'
+import { AssetsChart, AssetsTable, type ChartMode } from '@/components/retirement-projection-charts'
 import { cn } from '@/lib/utils'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { Asset, RecurringTransaction } from '@/types'
 
+/** An asset that exists only in the plan, e.g. "more bonds". */
+interface TempAsset {
+  id: string
+  name: string
+  value: number
+  growthPercent: number
+  yieldPercent: number
+  /** The asset exists from this year (0 = now). Older saved plans have none. */
+  fromYear?: number
+}
+
 interface Plan {
+  /** Lines whose amount stays the same instead of rising with inflation (recurring item ids, `asset:<id>:income`). */
+  flat: string[]
   assumptions: Assumptions
   drawable: Record<string, boolean>
   /** Growth a year the user typed for an asset, over the one its own rule gives. */
   growth: Record<string, number>
+  /** The order to sell in, when the strategy is "in my order": lower first. */
+  sellOrder: Record<string, number>
+  /** Hypothetical assets to sell from, kept with the plan. */
+  tempAssets: TempAsset[]
   whatIfs: WhatIf[]
 }
 
 const DEFAULT_PLAN: Plan = {
-  assumptions: { horizonYears: 30, inflationPercent: 2, incomeIndexed: true },
+  flat: [],
+  assumptions: { horizonYears: 30, inflationPercent: 2, incomeIndexed: true, drawdownStartYear: 0, sellStrategy: 'pro_rata' },
   drawable: {},
   growth: {},
+  sellOrder: {},
+  tempAssets: [],
   whatIfs: [],
 }
 const PLAN_KEY = 'retirement:plan'
 const SCENARIOS_KEY = 'retirement:scenarios'
-const BASELINE_COLOR = '#94A3B8'
-const SCENARIO_COLOR = '#6366F1'
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -84,6 +107,7 @@ export function RetirementProjection({
   const [plan, setPlanState] = useState<Plan>(() => read(PLAN_KEY, DEFAULT_PLAN))
   const [scenarios, setScenarios] = useState<Record<string, Plan>>(() => read<Record<string, Plan>>(SCENARIOS_KEY, {}))
   const [scenarioName, setScenarioName] = useState('')
+  const [chartMode, setChartMode] = useState<ChartMode>('total')
   const setPlan = (next: Plan) => {
     setPlanState(next)
     write(PLAN_KEY, next)
@@ -93,9 +117,14 @@ export function RetirementProjection({
 
   // What the page already counts feeds the projection, so its switches apply here too.
   const summary = useMemo(() => computeRetirement(items, assets, currency, excluded), [items, assets, currency, excluded])
-  const recurringIncomeMonthly = summary.income
-    .filter((l) => l.kind === 'recurring' && !excluded.has(l.id))
-    .reduce((sum, l) => sum + l.monthly, 0)
+  const flatSet = useMemo(() => new Set(plan.flat ?? []), [plan.flat])
+  const sum = (lines: { monthly: number }[]) => lines.reduce((total, l) => total + l.monthly, 0)
+  const recurringIncome = summary.income.filter((l) => l.kind === 'recurring' && !excluded.has(l.id))
+  const recurringIncomeMonthly = sum(recurringIncome.filter((l) => !flatSet.has(l.id)))
+  const recurringIncomeFlatMonthly = sum(recurringIncome.filter((l) => flatSet.has(l.id)))
+  const countedOutgoing = summary.outgoing.filter((l) => !excluded.has(l.item.id))
+  const outgoingMonthly = sum(countedOutgoing.filter((l) => !flatSet.has(l.item.id)))
+  const outgoingFlatMonthly = sum(countedOutgoing.filter((l) => flatSet.has(l.item.id)))
 
   const projectionAssets: ProjectionAsset[] = useMemo(() => {
     const list: ProjectionAsset[] = []
@@ -111,17 +140,32 @@ export function RetirementProjection({
         value,
         drawable: plan.drawable[asset.id] ?? defaultDrawable(asset.type, value),
         growthPercent: plan.growth[asset.id] ?? annualGrowthPercent(asset, value) ?? 0,
+        sellOrder: plan.sellOrder[asset.id],
         yieldPercent: yielding ? asset.income_rate ?? undefined : undefined,
         fixedMonthly: rental ?? undefined,
+        fixedFlat: flatSet.has(`asset:${asset.id}:income`) || undefined,
         sellPercent: asset.sell_percent_per_year && !excluded.has(`asset:${asset.id}:sale`) ? asset.sell_percent_per_year : undefined,
       })
     }
+    for (const temp of plan.tempAssets ?? []) {
+      list.push({
+        id: temp.id,
+        name: temp.name,
+        value: temp.value,
+        drawable: plan.drawable[temp.id] ?? true,
+        growthPercent: plan.growth[temp.id] ?? temp.growthPercent,
+        yieldPercent: temp.yieldPercent || undefined,
+        sellOrder: plan.sellOrder[temp.id],
+        temporary: true,
+        startYear: temp.fromYear || undefined,
+      })
+    }
     return list
-  }, [assets, currency, excluded, plan.drawable, plan.growth])
+  }, [assets, currency, excluded, flatSet, plan.drawable, plan.growth, plan.sellOrder, plan.tempAssets])
 
-  const base = { recurringIncomeMonthly, outgoingMonthly: summary.outgoingMonthly, assets: projectionAssets, assumptions: plan.assumptions }
-  const baseline = useMemo(() => projectRetirement({ ...base, whatIfs: [] }), [base.recurringIncomeMonthly, base.outgoingMonthly, projectionAssets, plan.assumptions]) // eslint-disable-line react-hooks/exhaustive-deps
-  const scenario = useMemo(() => projectRetirement({ ...base, whatIfs: plan.whatIfs }), [base.recurringIncomeMonthly, base.outgoingMonthly, projectionAssets, plan.assumptions, plan.whatIfs]) // eslint-disable-line react-hooks/exhaustive-deps
+  const base = { recurringIncomeMonthly, recurringIncomeFlatMonthly, outgoingMonthly, outgoingFlatMonthly, assets: projectionAssets, assumptions: plan.assumptions }
+  const baseline = useMemo(() => projectRetirement({ ...base, whatIfs: [] }), [base.recurringIncomeMonthly, base.recurringIncomeFlatMonthly, base.outgoingMonthly, base.outgoingFlatMonthly, projectionAssets, plan.assumptions]) // eslint-disable-line react-hooks/exhaustive-deps
+  const scenario = useMemo(() => projectRetirement({ ...base, whatIfs: plan.whatIfs }), [base.recurringIncomeMonthly, base.recurringIncomeFlatMonthly, base.outgoingMonthly, base.outgoingFlatMonthly, projectionAssets, plan.assumptions, plan.whatIfs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const thisYear = new Date().getFullYear()
   const horizon = plan.assumptions.horizonYears
@@ -129,16 +173,41 @@ export function RetirementProjection({
   const runway = (years: number | null) =>
     years === null ? t('retirement.projection.beyond', { years: horizon }) : t('retirement.projection.years', { years: years.toFixed(1), calendar: thisYear + Math.floor(years) })
 
-  const chartData = scenario.rows.map((row, i) => ({
+  const chartData = scenario.rows.map((row) => ({
     label: String(thisYear + row.year),
-    scenario: Math.max(row.drawable, 0),
-    baseline: Math.max(baseline.rows[i].drawable, 0),
     income: Math.round(row.income),
     outgoing: Math.round(row.outgoing),
   }))
   const axis = (v: number) => (privacyMode ? '' : v === 0 ? '0' : formatCompact(v, currency, locale))
+  const startYear = plan.assumptions.drawdownStartYear ?? 0
+  const endYear = plan.assumptions.drawdownEndYear
+  const names = useMemo(() => Object.fromEntries(projectionAssets.map((a) => [a.id, a.name])), [projectionAssets])
+  const drawableIds = useMemo(() => new Set(projectionAssets.filter((a) => a.drawable).map((a) => a.id).concat('__cash__')), [projectionAssets])
 
   const hasWhatIfs = plan.whatIfs.length > 0
+
+  const makeReport = () => {
+    const fixedLines = [
+      ...summary.outgoing.filter((l) => !excluded.has(l.item.id) && flatSet.has(l.item.id)).map((l) => ({ label: l.item.description, monthly: l.monthly })),
+      ...summary.income.filter((l) => l.kind === 'recurring' && !excluded.has(l.id) && flatSet.has(l.id)).map((l) => ({ label: l.label, monthly: l.monthly })),
+      ...projectionAssets.filter((a) => a.fixedFlat && a.fixedMonthly).map((a) => ({ label: a.name, monthly: a.fixedMonthly ?? 0 })),
+    ]
+    return buildReport({
+      t: t as unknown as Parameters<typeof buildReport>[0]['t'],
+      currency,
+      locale,
+      now: new Date(),
+      assumptions: plan.assumptions,
+      whatIfs: plan.whatIfs,
+      scenario,
+      baseline,
+      assets: projectionAssets,
+      fixedLines,
+    })
+  }
+  const stamp = () => new Date().toISOString().slice(0, 10)
+  const exportMarkdown = () => downloadText(`retirement-plan-${stamp()}.md`, reportToMarkdown(makeReport()))
+  const exportPdf = () => printHtml(reportToHtml(makeReport()))
   const saveScenario = () => {
     const name = scenarioName.trim()
     if (!name) return
@@ -185,33 +254,73 @@ export function RetirementProjection({
           <Button type="button" size="sm" variant="outline" onClick={saveScenario} disabled={!scenarioName.trim()}>
             <Save size={14} /> {t('retirement.projection.save')}
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" size="sm" variant="outline">
+                <Download size={14} /> {t('retirement.projection.export')}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={exportPdf}>{t('retirement.projection.exportPdf')}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={exportMarkdown}>{t('retirement.projection.exportMarkdown')}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
       <div className="p-4 sm:p-5 space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Stat label={t('retirement.projection.runway')} value={runway(scenario.runwayYears)} tone={scenario.runwayYears === null ? 'positive' : 'negative'} hint={hasWhatIfs ? t('retirement.projection.withWhatIfs') : t('retirement.projection.baselineHint')} />
+          <Stat label={t('retirement.projection.runway')} value={runway(scenario.runwayYears)} tone={scenario.runwayYears === null ? 'positive' : 'negative'} hint={startYear > 0 ? t('retirement.projection.drawingFrom', { year: thisYear + startYear }) : hasWhatIfs ? t('retirement.projection.withWhatIfs') : t('retirement.projection.baselineHint')} />
           {hasWhatIfs && <Stat label={t('retirement.projection.runwayBaseline')} value={runway(baseline.runwayYears)} hint={t('retirement.projection.withoutWhatIfs')} />}
+          {scenario.leftAtEnd !== null && endYear !== undefined && (
+            <Stat label={t('retirement.projection.leftAtEnd', { year: thisYear + endYear })} value={money(scenario.leftAtEnd)} tone={scenario.leftAtEnd > 0 ? 'positive' : 'negative'} hint={t('retirement.projection.leftAtEndHint')} />
+          )}
           <Stat label={t('retirement.projection.drawableNow')} value={money(scenario.drawableNow)} hint={t('retirement.projection.drawableHint')} />
           <Stat label={t('retirement.projection.inYears', { years: horizon })} value={money(scenario.rows[horizon - 1]?.drawable ?? 0)} hint={t('retirement.projection.netWorthIn', { amount: money(scenario.rows[horizon - 1]?.netWorth ?? 0) })} />
         </div>
 
         <div>
-          <p className="text-xs font-medium text-muted-foreground mb-2">{t('retirement.projection.chartAssets')}</p>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-                <YAxis tickFormatter={axis} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} width={64} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v) => (privacyMode ? MASK : formatCurrency(Number(v), currency, locale))} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <ReferenceLine y={0} stroke="var(--border)" />
-                {hasWhatIfs && <Line type="monotone" dataKey="baseline" name={t('retirement.projection.baseline')} stroke={BASELINE_COLOR} strokeDasharray="5 4" dot={false} strokeWidth={2} />}
-                <Line type="monotone" dataKey="scenario" name={hasWhatIfs ? t('retirement.projection.withWhatIfsShort') : t('retirement.projection.baseline')} stroke={SCENARIO_COLOR} dot={false} strokeWidth={2.5} />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <p className="text-xs font-medium text-muted-foreground">{t('retirement.projection.chartAssets')}</p>
+            <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+              {(['total', 'assets', 'table'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setChartMode(m)}
+                  className={cn('px-2.5 py-1', chartMode === m ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground')}
+                >
+                  {t(`retirement.projection.mode_${m}`)}
+                </button>
+              ))}
+            </div>
           </div>
+          {chartMode === 'table' ? (
+            <AssetsTable
+              scenario={scenario}
+              names={names}
+              drawableIds={drawableIds}
+              thisYear={thisYear}
+              money={money}
+            />
+          ) : (
+            <AssetsChart
+              scenario={scenario}
+              baseline={baseline}
+              hasWhatIfs={hasWhatIfs}
+              names={names}
+              drawableIds={drawableIds}
+              thisYear={thisYear}
+              currency={currency}
+              locale={locale}
+              mode={chartMode}
+              startYear={startYear}
+              endYear={endYear}
+              privacyMode={privacyMode}
+              mask={MASK}
+            />
+          )}
+          {chartMode !== 'table' && <p className="text-[11px] text-muted-foreground mt-1">{t('retirement.projection.hoverHint')}</p>}
         </div>
 
         <div>
@@ -231,18 +340,44 @@ export function RetirementProjection({
           </div>
         </div>
 
-        <Assumptions plan={plan} setAssumption={setAssumption} />
+        <Assumptions plan={plan} setAssumption={setAssumption} thisYear={thisYear} />
+        <InflationLines
+          income={summary.income.filter((l) => !excluded.has(l.id) && (l.kind === 'recurring' || l.asset?.income_mode === 'fixed'))}
+          outgoing={summary.outgoing.filter((l) => !excluded.has(l.item.id))}
+          flat={flatSet}
+          incomeIndexed={plan.assumptions.incomeIndexed}
+          money={money}
+          onToggle={(id) => {
+            const next = new Set(flatSet)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            setPlan({ ...plan, flat: [...next] })
+          }}
+        />
         <SpendFrom
           assets={projectionAssets}
           money={money}
           onToggle={(id, value) => setPlan({ ...plan, drawable: { ...plan.drawable, [id]: value } })}
           onGrowth={(id, value) => setPlan({ ...plan, growth: { ...plan.growth, [id]: value } })}
+          ordered={plan.assumptions.sellStrategy === 'ordered'}
+          onOrder={(id, value) => {
+            const next = { ...plan.sellOrder }
+            if (value === null) delete next[id]
+            else next[id] = value
+            setPlan({ ...plan, sellOrder: next })
+          }}
+          currency={currency}
+          thisYear={thisYear}
+          onAddTemp={(temp) => setPlan({ ...plan, tempAssets: [...(plan.tempAssets ?? []), temp] })}
+          onChangeTemp={(id, value) => setPlan({ ...plan, tempAssets: (plan.tempAssets ?? []).map((a) => (a.id === id ? { ...a, value } : a)) })}
+          onRemoveTemp={(id) => setPlan({ ...plan, tempAssets: (plan.tempAssets ?? []).filter((a) => a.id !== id) })}
         />
         <WhatIfs
           whatIfs={plan.whatIfs}
           assets={projectionAssets}
           horizon={horizon}
           thisYear={thisYear}
+          incomeIndexed={plan.assumptions.incomeIndexed}
           onChange={(whatIfs) => setPlan({ ...plan, whatIfs })}
         />
 
@@ -274,14 +409,16 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
   )
 }
 
-function Assumptions({ plan, setAssumption }: { plan: Plan; setAssumption: <K extends keyof Assumptions>(key: K, value: Assumptions[K]) => void }) {
+function Assumptions({ plan, setAssumption, thisYear }: { plan: Plan; setAssumption: <K extends keyof Assumptions>(key: K, value: Assumptions[K]) => void; thisYear: number }) {
   const { t } = useTranslation()
+  const uid = useId()
   const a = plan.assumptions
   const number = (key: 'horizonYears' | 'inflationPercent', label: string, suffix: string, min: number, max: number) => (
     <div className="space-y-1.5">
-      <Label className="text-xs">{label}</Label>
+      <Label htmlFor={`${uid}-${key}`} className="text-xs">{label}</Label>
       <div className="relative">
         <Input
+          id={`${uid}-${key}`}
           type="number"
           step="any"
           min={min}
@@ -304,10 +441,132 @@ function Assumptions({ plan, setAssumption }: { plan: Plan; setAssumption: <K ex
         {number('horizonYears', t('retirement.projection.horizon'), t('retirement.projection.yearsSuffix'), 5, 60)}
         {number('inflationPercent', t('retirement.projection.inflation'), '%', 0, 20)}
       </div>
+      <p className="text-xs font-medium text-muted-foreground mt-4 mb-2">{t('retirement.projection.drawdown')}</p>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor={`${uid}-start`} className="text-xs">{t('retirement.projection.drawdownStart', { year: thisYear + (a.drawdownStartYear ?? 0) })}</Label>
+          <Input
+            id={`${uid}-start`}
+            type="number"
+            min="0"
+            max={a.horizonYears - 1}
+            value={a.drawdownStartYear ?? 0}
+            onChange={(e) => {
+              const v = parseInt(e.target.value, 10)
+              if (!Number.isNaN(v)) setAssumption('drawdownStartYear', Math.min(a.horizonYears - 1, Math.max(0, v)))
+            }}
+            className="h-8"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={`${uid}-end`} className="text-xs">
+            {a.drawdownEndYear !== undefined ? t('retirement.projection.drawdownEnd', { year: thisYear + a.drawdownEndYear }) : t('retirement.projection.drawdownEndOpen')}
+          </Label>
+          <Input
+            id={`${uid}-end`}
+            type="number"
+            min={a.drawdownStartYear ?? 0}
+            max={a.horizonYears - 1}
+            value={a.drawdownEndYear ?? ''}
+            placeholder="∞"
+            onChange={(e) => {
+              if (e.target.value === '') return setAssumption('drawdownEndYear', undefined)
+              const v = parseInt(e.target.value, 10)
+              if (!Number.isNaN(v)) setAssumption('drawdownEndYear', Math.min(a.horizonYears - 1, Math.max(a.drawdownStartYear ?? 0, v)))
+            }}
+            className="h-8"
+          />
+        </div>
+        <div className="space-y-1.5 col-span-2">
+          <Label htmlFor={`${uid}-strategy`} className="text-xs">{t('retirement.projection.sellStrategy')}</Label>
+          <select
+            id={`${uid}-strategy`}
+            className="w-full border border-border rounded-md px-2 h-8 text-sm bg-card"
+            value={a.sellStrategy ?? 'pro_rata'}
+            onChange={(e) => setAssumption('sellStrategy', e.target.value as 'pro_rata' | 'ordered')}
+          >
+            <option value="pro_rata">{t('retirement.projection.strategyProRata')}</option>
+            <option value="ordered">{t('retirement.projection.strategyOrdered')}</option>
+          </select>
+        </div>
+      </div>
+      <p className="text-[11px] text-muted-foreground mt-2">{t('retirement.projection.drawdownNote')}</p>
       <label className="flex items-center gap-2 text-xs text-muted-foreground mt-3 cursor-pointer">
         <input type="checkbox" checked={a.incomeIndexed} onChange={(e) => setAssumption('incomeIndexed', e.target.checked)} className="size-4 accent-primary" />
         {t('retirement.projection.incomeIndexed')}
       </label>
+    </div>
+  )
+}
+
+/** Which lines rise with inflation. A fixed amount, like a mortgage payment or a
+ *  fixed rent, should stay the same, so it can be unticked. Saved with the plan. */
+function InflationLines({
+  income,
+  outgoing,
+  flat,
+  incomeIndexed,
+  money,
+  onToggle,
+}: {
+  income: IncomeLine[]
+  outgoing: OutgoingLine[]
+  flat: ReadonlySet<string>
+  incomeIndexed: boolean
+  money: (v: number) => string
+  onToggle: (id: string) => void
+}) {
+  const { t } = useTranslation()
+  const incomeRows = income.map((l) => ({ id: l.id, label: l.label, monthly: l.monthly }))
+  const costRows = outgoing.map((l) => ({ id: l.item.id, label: l.item.description, monthly: l.monthly }))
+
+  const list = (rows: { id: string; label: string; monthly: number }[], disabled: boolean) => {
+    const rising = rows.filter((r) => !flat.has(r.id)).reduce((sum, r) => sum + r.monthly, 0)
+    const fixed = rows.filter((r) => flat.has(r.id)).reduce((sum, r) => sum + r.monthly, 0)
+    return (
+      <div>
+        <p className="text-xs text-muted-foreground mb-2">
+          {disabled
+            ? t('retirement.projection.incomeNotIndexed')
+            : t('retirement.projection.inflationTotals', { rising: money(rising), fixed: money(fixed) })}
+        </p>
+        <ul className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-1 max-h-72 overflow-y-auto pr-1">
+          {rows.map((row) => {
+            const rises = !disabled && !flat.has(row.id)
+            return (
+              <li key={row.id}>
+                <label className={cn('flex items-center gap-2 text-sm', disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer')}>
+                  <input
+                    type="checkbox"
+                    checked={rises}
+                    disabled={disabled}
+                    onChange={() => onToggle(row.id)}
+                    className="size-4 accent-primary shrink-0"
+                    aria-label={t('retirement.projection.inflationApplies', { name: row.label })}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{row.label}</span>
+                  <span className="shrink-0 tabular-nums text-xs text-muted-foreground">{money(row.monthly)}</span>
+                </label>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <p className="text-xs font-medium text-muted-foreground mt-4">{t('retirement.projection.inflationTitle')}</p>
+      <p className="text-[11px] text-muted-foreground mb-2">{t('retirement.projection.inflationHint')}</p>
+      <Tabs defaultValue="costs">
+        <TabsList>
+          <TabsTrigger value="income">{t('retirement.projection.tabIncome')}</TabsTrigger>
+          <TabsTrigger value="costs">{t('retirement.projection.tabCosts')}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="income" className="mt-3">{list(incomeRows, !incomeIndexed)}</TabsContent>
+        <TabsContent value="costs" className="mt-3">{list(costRows, false)}</TabsContent>
+      </Tabs>
     </div>
   )
 }
@@ -317,13 +576,50 @@ function SpendFrom({
   money,
   onToggle,
   onGrowth,
+  ordered,
+  onOrder,
+  currency,
+  thisYear,
+  onAddTemp,
+  onChangeTemp,
+  onRemoveTemp,
 }: {
   assets: ProjectionAsset[]
   money: (v: number) => string
   onToggle: (id: string, value: boolean) => void
   onGrowth: (id: string, value: number) => void
+  ordered: boolean
+  onOrder: (id: string, value: number | null) => void
+  currency: string
+  thisYear: number
+  onAddTemp: (temp: TempAsset) => void
+  onChangeTemp: (id: string, value: number) => void
+  onRemoveTemp: (id: string) => void
 }) {
   const { t } = useTranslation()
+  const uid = useId()
+  const [tempName, setTempName] = useState('')
+  const [tempValue, setTempValue] = useState('')
+  const [tempGrowth, setTempGrowth] = useState('')
+  const [tempYield, setTempYield] = useState('')
+  const [tempFrom, setTempFrom] = useState('0')
+  const addTemp = () => {
+    const value = parseFloat(tempValue)
+    if (Number.isNaN(value) || value <= 0) return
+    onAddTemp({
+      id: crypto.randomUUID(),
+      name: tempName.trim() || t('retirement.projection.tempDefaultName'),
+      value,
+      growthPercent: parseFloat(tempGrowth) || 0,
+      yieldPercent: parseFloat(tempYield) || 0,
+      fromYear: Math.max(0, parseInt(tempFrom, 10) || 0),
+    })
+    setTempName('')
+    setTempValue('')
+    setTempGrowth('')
+    setTempYield('')
+    setTempFrom('0')
+  }
   const owned = assets.filter((a) => a.value > 0).sort((a, b) => b.value - a.value)
   return (
     <div>
@@ -339,7 +635,27 @@ function SpendFrom({
               className="size-4 accent-primary shrink-0"
               aria-label={t('retirement.projection.spendFromThis', { name: asset.name })}
             />
-            <span className={cn('min-w-0 flex-1 truncate', !asset.drawable && 'text-muted-foreground')}>{asset.name}</span>
+            <span className={cn('min-w-0 flex-1 truncate', !asset.drawable && 'text-muted-foreground')}>
+              {asset.name}
+              {asset.temporary && (
+                <span className="ml-1.5 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+                  {asset.startYear ? t('retirement.projection.tempBadgeFrom', { year: thisYear + asset.startYear }) : t('retirement.projection.tempBadge')}
+                </span>
+              )}
+            </span>
+            {ordered && asset.drawable && (
+              <Input
+                type="number"
+                min="1"
+                step="1"
+                value={asset.sellOrder ?? ''}
+                placeholder="–"
+                onChange={(e) => onOrder(asset.id, e.target.value === '' ? null : Math.max(1, parseInt(e.target.value, 10) || 1))}
+                className="h-7 w-12 px-1.5 text-center text-xs shrink-0"
+                aria-label={t('retirement.projection.sellOrderOf', { name: asset.name })}
+                title={t('retirement.projection.sellOrder')}
+              />
+            )}
             <span className="relative shrink-0">
               <Input
                 type="number"
@@ -355,10 +671,59 @@ function SpendFrom({
               />
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">%</span>
             </span>
-            <span className="shrink-0 w-24 text-right tabular-nums text-xs text-muted-foreground">{money(asset.value)}</span>
+            {asset.temporary ? (
+              <>
+                <Input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={asset.value}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value)
+                    if (!Number.isNaN(v) && v > 0) onChangeTemp(asset.id, v)
+                  }}
+                  className="h-7 w-24 px-1.5 text-right text-xs shrink-0"
+                  aria-label={t('retirement.projection.valueOf', { name: asset.name })}
+                />
+                <button type="button" onClick={() => onRemoveTemp(asset.id)} aria-label={t('retirement.projection.removeTemp', { name: asset.name })} className="text-muted-foreground hover:text-rose-500 shrink-0">
+                  <Trash2 size={14} />
+                </button>
+              </>
+            ) : (
+              <span className="shrink-0 w-24 text-right tabular-nums text-xs text-muted-foreground">{money(asset.value)}</span>
+            )}
           </li>
         ))}
       </ul>
+      <div className="mt-3 rounded-lg border border-dashed border-border p-3">
+        <p className="text-xs font-medium text-muted-foreground mb-2">{t('retirement.projection.addTemp')}</p>
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 items-end">
+          <div className="space-y-1.5 col-span-2 lg:col-span-1">
+            <Label htmlFor={`${uid}-tn`} className="text-xs">{t('retirement.projection.label')}</Label>
+            <Input id={`${uid}-tn`} value={tempName} onChange={(e) => setTempName(e.target.value)} placeholder={t('retirement.projection.tempPlaceholder')} className="h-8" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-tv`} className="text-xs">{t('retirement.projection.tempValue', { currency })}</Label>
+            <Input id={`${uid}-tv`} type="number" min="0" step="any" value={tempValue} onChange={(e) => setTempValue(e.target.value)} className="h-8" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-tg`} className="text-xs">{t('retirement.projection.growthPerYear')} %</Label>
+            <Input id={`${uid}-tg`} type="number" step="any" value={tempGrowth} onChange={(e) => setTempGrowth(e.target.value)} className="h-8" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-ty`} className="text-xs">{t('retirement.projection.tempYield')}</Label>
+            <Input id={`${uid}-ty`} type="number" min="0" step="any" value={tempYield} onChange={(e) => setTempYield(e.target.value)} className="h-8" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-tf`} className="text-xs">{t('retirement.projection.tempFrom', { year: thisYear + (parseInt(tempFrom, 10) || 0) })}</Label>
+            <Input id={`${uid}-tf`} type="number" min="0" step="1" value={tempFrom} onChange={(e) => setTempFrom(e.target.value)} className="h-8" />
+          </div>
+          <Button type="button" size="sm" onClick={addTemp} disabled={!(parseFloat(tempValue) > 0)} className="h-8">
+            <Plus size={14} /> {t('retirement.projection.addAsset')}
+          </Button>
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-2">{t('retirement.projection.tempHint')}</p>
+      </div>
     </div>
   )
 }
@@ -370,15 +735,18 @@ function WhatIfs({
   assets,
   horizon,
   thisYear,
+  incomeIndexed,
   onChange,
 }: {
   whatIfs: WhatIf[]
   assets: ProjectionAsset[]
   horizon: number
   thisYear: number
+  incomeIndexed: boolean
   onChange: (next: WhatIf[]) => void
 }) {
   const { t } = useTranslation()
+  const uid = useId()
   const [kind, setKind] = useState<Kind>('expense')
   const [label, setLabel] = useState('')
   const [amount, setAmount] = useState('')
@@ -386,6 +754,7 @@ function WhatIfs({
   const [toYear, setToYear] = useState('')
   const [assetId, setAssetId] = useState('')
   const [fees, setFees] = useState('0')
+  const [inflates, setInflates] = useState(true)
   const sellable = assets.filter((a) => a.value > 0)
 
   const valid =
@@ -398,21 +767,19 @@ function WhatIfs({
     if (kind === 'sell') {
       const asset = sellable.find((a) => a.id === assetId)
       item = { id, kind, label: label.trim() || t('retirement.projection.sellLabel', { name: asset?.name ?? '' }), assetId, year: from, feesPercent: parseFloat(fees) || 0 }
+    } else if (kind === 'spend') {
+      item = { id, kind, label: label.trim() || t('retirement.projection.kind_spend'), monthly: Math.abs(parseFloat(amount)), fromYear: from, inflates }
     } else if (kind === 'oneoff') {
       item = { id, kind, label: label.trim() || t('retirement.projection.oneoffLabel'), amount: parseFloat(amount), year: from }
     } else {
-      item = { id, kind, label: label.trim() || t(`retirement.projection.kind_${kind}`), monthly: Math.abs(parseFloat(amount)), fromYear: from, toYear: toYear ? parseInt(toYear, 10) : undefined }
+      item = { id, kind, label: label.trim() || t(`retirement.projection.kind_${kind}`), monthly: Math.abs(parseFloat(amount)), fromYear: from, toYear: toYear ? parseInt(toYear, 10) : undefined, inflates }
     }
     onChange([...whatIfs, item])
     setLabel('')
     setAmount('')
   }
 
-  const describe = (w: WhatIf) => {
-    if (w.kind === 'sell') return t('retirement.projection.describeSell', { year: thisYear + w.year, fees: w.feesPercent })
-    if (w.kind === 'oneoff') return t('retirement.projection.describeOneoff', { amount: w.amount, year: thisYear + w.year })
-    return t('retirement.projection.describeMonthly', { amount: w.monthly, from: thisYear + w.fromYear, to: w.toYear !== undefined ? thisYear + w.toYear : t('retirement.projection.onwards') })
-  }
+  const describe = (w: WhatIf) => describeWhatIf(t as unknown as Parameters<typeof describeWhatIf>[0], w, thisYear)
 
   const field = 'h-8'
   return (
@@ -435,9 +802,10 @@ function WhatIfs({
       )}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 items-end">
         <div className="space-y-1.5 col-span-2 lg:col-span-1">
-          <Label className="text-xs">{t('retirement.projection.whatKind')}</Label>
-          <select className={cn('w-full border border-border rounded-md px-2 text-sm bg-card', field)} value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
+          <Label htmlFor={`${uid}-kind`} className="text-xs">{t('retirement.projection.whatKind')}</Label>
+          <select id={`${uid}-kind`} className={cn('w-full border border-border rounded-md px-2 text-sm bg-card', field)} value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
             <option value="expense">{t('retirement.projection.kind_expense')}</option>
+            <option value="spend">{t('retirement.projection.kind_spend')}</option>
             <option value="income">{t('retirement.projection.kind_income')}</option>
             <option value="oneoff">{t('retirement.projection.kind_oneoff')}</option>
             <option value="sell">{t('retirement.projection.kind_sell')}</option>
@@ -446,43 +814,55 @@ function WhatIfs({
         {kind === 'sell' ? (
           <>
             <div className="space-y-1.5 col-span-2 lg:col-span-2">
-              <Label className="text-xs">{t('retirement.projection.asset')}</Label>
-              <select className={cn('w-full border border-border rounded-md px-2 text-sm bg-card', field)} value={assetId} onChange={(e) => setAssetId(e.target.value)}>
+              <Label htmlFor={`${uid}-asset`} className="text-xs">{t('retirement.projection.asset')}</Label>
+              <select id={`${uid}-asset`} className={cn('w-full border border-border rounded-md px-2 text-sm bg-card', field)} value={assetId} onChange={(e) => setAssetId(e.target.value)}>
                 <option value="">{t('retirement.projection.chooseAsset')}</option>
                 {sellable.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">{t('retirement.projection.fees')}</Label>
-              <Input type="number" min="0" max="100" step="any" value={fees} onChange={(e) => setFees(e.target.value)} className={field} />
+              <Label htmlFor={`${uid}-fees`} className="text-xs">{t('retirement.projection.fees')}</Label>
+              <Input id={`${uid}-fees`} type="number" min="0" max="100" step="any" value={fees} onChange={(e) => setFees(e.target.value)} className={field} />
             </div>
           </>
         ) : (
           <>
             <div className="space-y-1.5">
-              <Label className="text-xs">{t('retirement.projection.label')}</Label>
-              <Input value={label} onChange={(e) => setLabel(e.target.value)} className={field} />
+              <Label htmlFor={`${uid}-label`} className="text-xs">{t('retirement.projection.label')}</Label>
+              <Input id={`${uid}-label`} value={label} onChange={(e) => setLabel(e.target.value)} className={field} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">{kind === 'oneoff' ? t('retirement.projection.amountSigned') : t('retirement.projection.amountMonthly')}</Label>
-              <Input type="number" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
+              <Label htmlFor={`${uid}-amount`} className="text-xs">{kind === 'oneoff' ? t('retirement.projection.amountSigned') : t('retirement.projection.amountMonthly')}</Label>
+              <Input id={`${uid}-amount`} type="number" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
             </div>
           </>
         )}
         <div className="space-y-1.5">
-          <Label className="text-xs">{kind === 'expense' || kind === 'income' ? t('retirement.projection.fromYear') : t('retirement.projection.inYear')}</Label>
-          <Input type="number" min="0" max={horizon} value={fromYear} onChange={(e) => setFromYear(e.target.value)} className={field} />
+          <Label htmlFor={`${uid}-from`} className="text-xs">{kind === 'expense' || kind === 'income' || kind === 'spend' ? t('retirement.projection.fromYear') : t('retirement.projection.inYear')}</Label>
+          <Input id={`${uid}-from`} type="number" min="0" max={horizon} value={fromYear} onChange={(e) => setFromYear(e.target.value)} className={field} />
         </div>
         {(kind === 'expense' || kind === 'income') && (
           <div className="space-y-1.5">
-            <Label className="text-xs">{t('retirement.projection.toYear')}</Label>
-            <Input type="number" min="0" max={horizon} value={toYear} onChange={(e) => setToYear(e.target.value)} className={field} placeholder="∞" />
+            <Label htmlFor={`${uid}-to`} className="text-xs">{t('retirement.projection.toYear')}</Label>
+            <Input id={`${uid}-to`} type="number" min="0" max={horizon} value={toYear} onChange={(e) => setToYear(e.target.value)} className={field} placeholder="∞" />
           </div>
         )}
         <Button type="button" size="sm" onClick={add} disabled={!valid} className="h-8">
           <Plus size={14} /> {t('retirement.projection.add')}
         </Button>
       </div>
+      {(kind === 'expense' || kind === 'income' || kind === 'spend') && (
+        <label className={cn('flex items-center gap-2 text-xs mt-3', kind === 'income' && !incomeIndexed ? 'text-muted-foreground/60 cursor-not-allowed' : 'text-muted-foreground cursor-pointer')}>
+          <input
+            type="checkbox"
+            checked={inflates && !(kind === 'income' && !incomeIndexed)}
+            disabled={kind === 'income' && !incomeIndexed}
+            onChange={(e) => setInflates(e.target.checked)}
+            className="size-4 accent-primary"
+          />
+          {t('retirement.projection.risesWithInflation')}
+        </label>
+      )}
       <p className="text-[11px] text-muted-foreground mt-2">{t('retirement.projection.yearsHint')}</p>
     </div>
   )
