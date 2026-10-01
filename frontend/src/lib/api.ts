@@ -46,6 +46,7 @@ import type {
   RecurringTransaction,
   RecurringSuggestion,
   CategorizerSettings,
+  MonthlyReview,
   CategorizationJob,
   CategorizationSuggestion,
   CategorizationSuggestionTransaction,
@@ -366,6 +367,11 @@ export const categoryGroups = {
 
 // Bank Connections
 export const connections = {
+  /** Pair the two legs of transfers between your own accounts across all existing transactions. */
+  detectTransfers: async (): Promise<{ pairs_created: number }> => {
+    const { data } = await api.post('/connections/transfers/detect')
+    return data
+  },
   list: async (): Promise<BankConnection[]> => {
     const { data } = await api.get('/connections')
     return data
@@ -665,7 +671,7 @@ export const transactions = {
     filename: string,
     detected_format: string,
     options?: { detect_duplicates?: boolean },
-  ): Promise<{ imported: number; skipped: number; excluded: number; import_log_id: string }> => {
+  ): Promise<{ imported: number; skipped: number; excluded: number; import_log_id: string; transfers_paired?: number }> => {
     const payload: {
       account_id: string
       transactions: ImportPreviewTransaction[]
@@ -1340,6 +1346,10 @@ export const collections = {
 
 // Reports
 export const reports = {
+  monthlyReview: async (month?: string): Promise<MonthlyReview> => {
+    const { data } = await api.get('/reports/monthly-review', { params: month ? { month } : {} })
+    return data
+  },
   netWorth: async (
     months = 12,
     interval = 'monthly',

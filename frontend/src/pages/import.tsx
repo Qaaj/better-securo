@@ -4,7 +4,7 @@ import { getAccountName, sortAccountsByDisplayName } from '@/lib/account-utils'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { transactions as transactionsApi, accounts as accountsApi, categories as categoriesApi, categoryGroups as categoryGroupsApi } from '@/lib/api'
+import { transactions as transactionsApi, accounts as accountsApi, categories as categoriesApi, categoryGroups as categoryGroupsApi, connections as connectionsApi } from '@/lib/api'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -152,7 +152,7 @@ function TransactionImportPanel() {
       const msg = hasSkippedOrExcluded
         ? t('import.importedWithExcluded', { imported: data.imported, skipped: data.skipped ?? 0, excluded: data.excluded ?? 0 })
         : `${data.imported} ${t('import.transactionsImported')}`
-      toast.success(msg)
+      toast.success(data.transfers_paired ? `${msg} · ${t('import.transfersPaired', { count: data.transfers_paired })}` : msg)
       setPreviewData(null)
       setReviewTransactions([])
       setSelectedAccount('')
@@ -624,6 +624,8 @@ function TransactionImportPanel() {
         </div>
       )}
 
+      <TransfersCard />
+
       <ImportHistory entity="transactions" />
 
       {/* Unparsed CSV rows dialog */}
@@ -707,6 +709,34 @@ export default function ImportPage() {
       </div>
 
       {tab === 'investments' ? <AssetImportPanel /> : <TransactionImportPanel />}
+    </div>
+  )
+}
+
+/** Pairs the two legs of moves between your own accounts across everything already imported. */
+function TransfersCard() {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const { canWrite } = useWorkspace()
+  const detect = useMutation({
+    mutationFn: () => connectionsApi.detectTransfers(),
+    onSuccess: (r) => {
+      invalidateFinancialQueries(queryClient)
+      toast.success(r.pairs_created > 0 ? t('import.transfersFound', { count: r.pairs_created }) : t('import.transfersNone'))
+    },
+    onError: () => toast.error(t('common.error')),
+  })
+  return (
+    <div className="bg-card rounded-xl border border-border shadow-sm px-4 sm:px-5 py-4 mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-foreground">{t('import.transfersTitle')}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{t('import.transfersDescription')}</p>
+      </div>
+      {canWrite && (
+        <Button type="button" variant="outline" size="sm" onClick={() => detect.mutate()} disabled={detect.isPending}>
+          {detect.isPending ? t('common.loading') : t('import.transfersFind')}
+        </Button>
+      )}
     </div>
   )
 }

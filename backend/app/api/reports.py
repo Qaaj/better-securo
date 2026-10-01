@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_async_session
 from app.core.workspace_context import WorkspaceContext, current_workspace
 from app.schemas.report import ReportResponse
-from app.services import report_service
+from app.schemas.review import MonthlyReview
+from app.services import report_service, review_service
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -154,3 +155,18 @@ async def get_cash_flow(
         session, ctx.workspace.id, ctx.user_id, months, interval, ctx.user.primary_currency,
         baseline=baseline, account_ids=account_ids,
     )
+
+
+@router.get("/monthly-review", response_model=MonthlyReview)
+async def monthly_review(
+    month: Optional[date] = Query(None, description="Any date inside the month; defaults to the current month"),
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """A plain-language review of one month against the user's usual month."""
+    from app.core.config import get_settings
+    from app.models.user import User
+
+    user = await session.get(User, ctx.user_id)
+    currency = user.primary_currency if user else get_settings().default_currency
+    return await review_service.monthly_review(session, ctx.workspace.id, currency, month)

@@ -24,7 +24,9 @@ import { extractApiError } from '@/lib/api-errors'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
+import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/page-header'
+import { MonthlyReviewPanel } from '@/components/monthly-review'
 import { CashflowSankey } from '@/components/reports/CashflowSankey'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
@@ -154,6 +156,12 @@ interface ReportTab {
 
 const REPORT_TABS: ReportTab[] = [
   {
+    // The plain-language monthly review has its own month picker and none of the range/interval controls.
+    key: 'review', labelKey: 'reports.review.tab', enabled: true,
+    rangeOptions: HISTORICAL_RANGE_OPTIONS, intervalOptions: HISTORICAL_INTERVAL_OPTIONS,
+    supportsCustomRange: true, fallbackRangeKey: '1y', fallbackInterval: 'monthly',
+  },
+  {
     key: 'net_worth', labelKey: 'reports.netWorth', enabled: true,
     rangeOptions: HISTORICAL_RANGE_OPTIONS, intervalOptions: HISTORICAL_INTERVAL_OPTIONS,
     supportsCustomRange: true, fallbackRangeKey: '1y', fallbackInterval: 'monthly',
@@ -191,7 +199,11 @@ export default function ReportsPage() {
   // selection while the user compares views.
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
-  const [activeTab, setActiveTab] = useState('net_worth')
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState(() => {
+    const requested = searchParams.get('tab')
+    return REPORT_TABS.some((tab) => tab.key === requested) ? (requested as string) : 'review'
+  })
   const [compositionView, setCompositionView] = useState<string>('netWorth')
   const [sparklineView, setSparklineView] = useState<'byExpenses' | 'byIncome'>('byExpenses')
   const [sparklinePage, setSparklinePage] = useState(0)
@@ -271,7 +283,7 @@ export default function ReportsPage() {
           ? reports.incomeExpenses(months, interval, acctIds, period, days, apiStart, apiEnd)
           : reports.netWorth(months, interval, acctIds, walletIds, period, apiStart, apiEnd),
     // Only request a custom report with both committed endpoints.
-    enabled: currentTab.enabled && !(noAccounts && activeTab !== 'net_worth') && (!isCustomRange || hasCustomRange),
+    enabled: activeTab !== 'review' && currentTab.enabled && !(noAccounts && activeTab !== 'net_worth') && (!isCustomRange || hasCustomRange),
   })
 
   const summary = data?.summary
@@ -523,6 +535,45 @@ export default function ReportsPage() {
     return result
   })()
 
+  const tabBar = (
+      <div className="flex items-center gap-1 mb-5 border-b border-border">
+        {REPORT_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => { if (tab.enabled) handleSelectTab(tab.key) }}
+            disabled={!tab.enabled}
+            className={`relative px-4 py-2.5 text-sm font-medium transition-colors ${
+              activeTab === tab.key
+                ? 'text-foreground'
+                : tab.enabled
+                  ? 'text-muted-foreground hover:text-foreground'
+                  : 'text-muted-foreground/50 cursor-not-allowed'
+            }`}
+          >
+            {t(tab.labelKey)}
+            {!tab.enabled && (
+              <span className="ml-1.5 text-[10px] text-muted-foreground/50">
+                {t('reports.comingSoon')}
+              </span>
+            )}
+            {activeTab === tab.key && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+            )}
+          </button>
+        ))}
+      </div>
+  )
+
+  if (activeTab === 'review') {
+    return (
+      <div>
+        <PageHeader section={t('reports.section')} title={t('reports.review.tab')} />
+        {tabBar}
+        <MonthlyReviewPanel />
+      </div>
+    )
+  }
+
   return (
     <div>
       <PageHeader
@@ -620,33 +671,7 @@ export default function ReportsPage() {
         }
       />
 
-      {/* Tab Bar */}
-      <div className="flex items-center gap-1 mb-5 border-b border-border">
-        {REPORT_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => { if (tab.enabled) handleSelectTab(tab.key) }}
-            disabled={!tab.enabled}
-            className={`relative px-4 py-2.5 text-sm font-medium transition-colors ${
-              activeTab === tab.key
-                ? 'text-foreground'
-                : tab.enabled
-                  ? 'text-muted-foreground hover:text-foreground'
-                  : 'text-muted-foreground/50 cursor-not-allowed'
-            }`}
-          >
-            {t(tab.labelKey)}
-            {!tab.enabled && (
-              <span className="ml-1.5 text-[10px] text-muted-foreground/50">
-                {t('reports.comingSoon')}
-              </span>
-            )}
-            {activeTab === tab.key && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
-            )}
-          </button>
-        ))}
-      </div>
+      {tabBar}
 
       {isError && (
         <div className="flex items-center justify-between gap-3 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 rounded-lg px-4 py-2.5 mb-5">

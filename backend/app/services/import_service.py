@@ -824,6 +824,7 @@ async def import_transactions(
     filename: str = "",
     detected_format: str = "",
     detect_duplicates: bool = True,
+    report: dict | None = None,
 ) -> tuple[int, int, int, uuid.UUID]:
     """Import transactions into an account in the given workspace.
 
@@ -1081,6 +1082,17 @@ async def import_transactions(
     # row is written: settling an invoice creates an allocation pointing
     # at a transaction, which has to exist first.
     await reconciliation_service.match_incoming(session, workspace_id, landed)
+
+    # Money that moved between two of your accounts is one event recorded
+    # twice. A file import never paired the legs (only a bank sync did), so
+    # every such move counted as an expense on one side and income on the
+    # other. Pair the new rows with what is already there; a pair needs at
+    # least one new leg, so old history is not reconsidered.
+    from app.services.transfer_detection_service import detect_transfer_pairs
+
+    pairs = await detect_transfer_pairs(session, workspace_id, candidate_ids=[t.id for t in landed])
+    if report is not None:
+        report["transfers_paired"] = pairs
 
     await session.commit()
     return imported, skipped, excluded_count, import_log.id
