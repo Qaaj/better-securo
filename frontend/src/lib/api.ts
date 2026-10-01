@@ -1077,16 +1077,20 @@ export const categorization = {
     const { data } = await api.get(`/categorization/jobs/${jobId}/suggestions`, { params: { status: 'pending', limit } })
     return data
   },
-  accept: async (id: string, categoryId?: string): Promise<CategorizationSuggestion> => {
-    const { data } = await api.post(`/categorization/suggestions/${id}/accept`, { category_id: categoryId ?? null })
+  accept: async (id: string, categoryId?: string, createRule = false): Promise<CategorizationSuggestion> => {
+    const { data } = await api.post(`/categorization/suggestions/${id}/accept`, { category_id: categoryId ?? null, create_rule: createRule })
     return data
   },
   reject: async (id: string): Promise<CategorizationSuggestion> => {
     const { data } = await api.post(`/categorization/suggestions/${id}/reject`)
     return data
   },
-  acceptAll: async (jobId: string, minConfidence: 'high' | 'medium' | 'low' = 'high'): Promise<{ suggestions: number; transactions: number }> => {
-    const { data } = await api.post(`/categorization/jobs/${jobId}/accept-all`, { min_confidence: minConfidence })
+  acceptAll: async (
+    jobId: string,
+    minConfidence: 'high' | 'medium' | 'low' = 'high',
+    createRules = false,
+  ): Promise<{ suggestions: number; transactions: number; rules_created: number }> => {
+    const { data } = await api.post(`/categorization/jobs/${jobId}/accept-all`, { min_confidence: minConfidence, create_rules: createRules })
     return data
   },
 }

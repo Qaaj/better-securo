@@ -57,6 +57,8 @@ class SuggestionRead(BaseModel):
     source: str
     status: str
     applied_count: int
+    # Set only on the response to an accept that asked for a rule.
+    rule_created: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -69,13 +71,17 @@ class SuggestionList(BaseModel):
 class AcceptSuggestionRequest(BaseModel):
     # Overrides the suggested category; required when none was suggested.
     category_id: Optional[uuid.UUID] = None
+    # Also make a rule so future transactions of this merchant are categorized on import.
+    create_rule: bool = False
 
 
 class AcceptAllRequest(BaseModel):
     source: Optional[Literal["history", "llm"]] = None
     min_confidence: Literal["high", "medium", "low"] = "high"
+    create_rules: bool = False
 
 
 class AcceptAllResult(BaseModel):
     suggestions: int
     transactions: int
+    rules_created: int = 0

@@ -19,6 +19,15 @@ import { CategorySelect } from '@/components/category-select'
 import type { CategorizationJob, CategorizationSuggestion, Category, CategoryGroup } from '@/types'
 
 const ACTIVE = new Set(['pending', 'running'])
+const RULES_KEY = 'categorizer:create-rules'
+
+function loadCreateRules(): boolean {
+  try {
+    return window.localStorage.getItem(RULES_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 /** Categories > Automate: runs the local model over the uncategorized
  *  transactions and lets the user review the result merchant by merchant. */
@@ -147,6 +156,16 @@ function ReviewList({ job, canWrite }: { job: CategorizationJob; canWrite: boole
   const { mask } = usePrivacyMode()
   const { user } = useAuth()
   const currency = user?.preferences?.currency_display ?? 'USD'
+  // Remembered between visits: whether accepting also makes a rule for the merchant.
+  const [createRules, setCreateRules] = useState(loadCreateRules)
+  const changeCreateRules = (value: boolean) => {
+    setCreateRules(value)
+    try {
+      window.localStorage.setItem(RULES_KEY, value ? '1' : '0')
+    } catch {
+      // Blocked storage: the choice just does not persist.
+    }
+  }
 
   const { data: categoriesList } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.list, refetchOnWindowFocus: false })
   const { data: groupsList } = useQuery({ queryKey: ['categoryGroups'], queryFn: categoryGroupsApi.list, refetchOnWindowFocus: false })
@@ -188,9 +207,9 @@ function ReviewList({ job, canWrite }: { job: CategorizationJob; canWrite: boole
     invalidateFinancialQueries(queryClient)
   }
   const acceptAll = useMutation({
-    mutationFn: () => api.acceptAll(job.id, 'high'),
+    mutationFn: () => api.acceptAll(job.id, 'high', createRules),
     onSuccess: (r) => {
-      toast.success(t('categories.automate.acceptedAll', { suggestions: r.suggestions, transactions: r.transactions }))
+      toast.success(t('categories.automate.acceptedAll', { suggestions: r.suggestions, transactions: r.transactions }) + (createRules ? ' ' + t('categories.automate.rulesAdded', { count: r.rules_created }) : ''))
       refreshAll()
     },
     onError: (err: unknown) => toast.error(extractApiError(err, t('common.error'))),
@@ -207,10 +226,16 @@ function ReviewList({ job, canWrite }: { job: CategorizationJob; canWrite: boole
           </p>
         </div>
         {canWrite && job.counts.pending > 0 && (
-          <Button type="button" size="sm" variant="outline" onClick={() => acceptAll.mutate()} disabled={acceptAll.isPending}>
-            {acceptAll.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            {t('categories.automate.acceptHigh')}
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer" title={t('categories.automate.createRulesHint')}>
+              <input type="checkbox" checked={createRules} onChange={(e) => changeCreateRules(e.target.checked)} className="size-4 accent-primary" />
+              {t('categories.automate.createRules')}
+            </label>
+            <Button type="button" size="sm" variant="outline" onClick={() => acceptAll.mutate()} disabled={acceptAll.isPending}>
+              {acceptAll.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {t('categories.automate.acceptHigh')}
+            </Button>
+          </div>
         )}
       </div>
       {items.length === 0 ? (
@@ -224,6 +249,7 @@ function ReviewList({ job, canWrite }: { job: CategorizationJob; canWrite: boole
               categories={categoriesList ?? []}
               groups={groupsList ?? []}
               canWrite={canWrite}
+              createRule={createRules}
               money={(v) => mask(formatCurrency(Number(v), currency, locale))}
               onDone={() => removeRow(s.id)}
             />
@@ -244,6 +270,7 @@ function SuggestionRow({
   categories,
   groups,
   canWrite,
+  createRule,
   money,
   onDone,
 }: {
@@ -251,6 +278,7 @@ function SuggestionRow({
   categories: Category[]
   groups: CategoryGroup[]
   canWrite: boolean
+  createRule: boolean
   money: (value: string | number) => string
   onDone: () => void
 }) {
@@ -259,8 +287,11 @@ function SuggestionRow({
   const categoryId = categoryEdit ?? suggestion.suggested_category_id ?? ''
 
   const accept = useMutation({
-    mutationFn: () => api.accept(suggestion.id, categoryId || undefined),
-    onSuccess: onDone,
+    mutationFn: () => api.accept(suggestion.id, categoryId || undefined, createRule),
+    onSuccess: (result) => {
+      if (createRule && !result.rule_created) toast.info(t('categories.automate.noRule'))
+      onDone()
+    },
     onError: (err: unknown) => toast.error(extractApiError(err, t('common.error'))),
   })
   const reject = useMutation({ mutationFn: () => api.reject(suggestion.id), onSuccess: onDone })

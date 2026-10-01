@@ -226,7 +226,7 @@ async def test_api_accept_all_respects_the_confidence_bar(client, auth_headers, 
         f"/api/categorization/jobs/{job.id}/accept-all", json={"min_confidence": "high"}, headers=auth_headers
     )
     # Only the history match (3 Albert Heijn rows) clears the bar; the low-confidence STIB guess waits.
-    assert result.json() == {"suggestions": 1, "transactions": 3}
+    assert result.json() == {"suggestions": 1, "transactions": 3, "rules_created": 0}
 
 
 @pytest.mark.asyncio
@@ -363,3 +363,98 @@ async def test_classifier_includes_the_servers_reason_for_a_rejection(monkeypatc
     with pytest.raises(svc.CategorizerError, match="context length exceeded") as caught:
         await svc.LMStudioClassifier("lm:1234", "m").classify([], [], ["Food"])
     assert not isinstance(caught.value, svc.CategorizerUnavailable)
+
+
+# ------------------------------------------------------------------ rules from suggestions
+import re  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from app.models.rule import Rule  # noqa: E402
+from app.services import rule_engine  # noqa: E402
+
+
+def _matches(pattern: str, description: str) -> bool:
+    condition = {"field": "description", "op": "regex", "value": pattern}
+    return rule_engine._match_condition(condition, SimpleNamespace(description=description))
+
+
+def test_a_rule_pattern_finds_the_merchant_through_references_and_punctuation():
+    pattern = svc.rule_pattern("netflix com")
+    assert _matches(pattern, "NETFLIX.COM 4412")
+    assert _matches(pattern, "Netflix.com 9981 AMSTERDAM")
+    assert not _matches(pattern, "NETFLIXX COMMUNITY")
+    stib = svc.rule_pattern("stib mivb")
+    assert _matches(stib, "STIB-MIVB") and _matches(stib, "stib / mivb 123")
+
+
+def test_a_rule_pattern_ignores_accents_and_does_not_match_inside_longer_words():
+    pattern = svc.rule_pattern("café de flore")
+    assert _matches(pattern, "CAFE DE FLORE PARIS")
+    assert not _matches(svc.rule_pattern("temu"), "TEMUCO CHILE")
+    # The merchant is the start of the description, not any word inside it.
+    assert not _matches(svc.rule_pattern("paul"), "TO PAUL FINEAU")
+    assert _matches(svc.rule_pattern("paul"), "Paul 8841")
+    assert _matches(svc.rule_pattern("temu"), "Temu.com 1234")
+
+
+def test_a_cut_key_drops_its_possibly_incomplete_last_word():
+    key = svc.merchant_key("BIJDRAGE IN DE BEHEERSKOSTEN VAN UW GEBOUW")
+    assert len(key) == 40
+    pattern = svc.rule_pattern(key)
+    assert _matches(pattern, "BIJDRAGE IN DE BEHEERSKOSTEN VAN UW GEBOUW 12")
+    assert key.endswith("gebo") and "gebo" not in pattern.lower()  # the cut-off word is left out
+    assert "beheerskosten" in pattern.lower()
+
+
+@pytest.mark.parametrize("key", ["", "ok", "bp 1", "a b"])
+def test_a_name_too_short_to_be_safe_gets_no_rule(key):
+    assert svc.rule_pattern(key) is None
+    assert re.compile(svc.rule_pattern("abcd")) is not None
+
+
+@pytest.mark.asyncio
+async def test_accepting_with_create_rule_adds_a_rule_that_does_not_recategorize_the_past(
+    client, auth_headers, session, test_user, test_workspace, setup
+):
+    _, transport, _ = setup
+    job = await _job(session, test_user, test_workspace)
+    await svc.run_job(
+        async_sessionmaker(session.bind, expire_on_commit=False), job.id,
+        FakeClassifier({"stib mivb": (transport.name, "high")}),
+    )
+    stib = (await session.execute(
+        select(CategorizationSuggestion).where(CategorizationSuggestion.merchant_key == "stib mivb")
+    )).scalar_one()
+    resp = await client.post(
+        f"/api/categorization/suggestions/{stib.id}/accept", json={"create_rule": True}, headers=auth_headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["rule_created"] is True
+
+    rule = (await session.execute(select(Rule).where(Rule.name == "Auto: stib mivb"))).scalar_one()
+    assert rule.actions == [{"op": "set_category", "value": str(transport.id)}]
+    assert rule.conditions[0]["op"] == "regex"
+    assert _matches(rule.conditions[0]["value"], "STIB-MIVB 8841")
+
+    # A second accept for the same merchant does not duplicate the rule.
+    repeat = await svc.create_rule_for_suggestion(session, test_workspace.id, test_user.id, stib, transport.id)
+    assert repeat is False
+
+
+@pytest.mark.asyncio
+async def test_accept_without_the_flag_makes_no_rule_and_accept_all_counts_rules(
+    client, auth_headers, session, test_user, test_workspace, setup
+):
+    _, transport, _ = setup
+    job = await _job(session, test_user, test_workspace)
+    await svc.run_job(
+        async_sessionmaker(session.bind, expire_on_commit=False), job.id,
+        FakeClassifier({"stib mivb": (transport.name, "high")}),
+    )
+    result = await client.post(
+        f"/api/categorization/jobs/{job.id}/accept-all",
+        json={"min_confidence": "high", "create_rules": True}, headers=auth_headers,
+    )
+    body = result.json()
+    assert body["suggestions"] == 2 and body["rules_created"] == 2
+    assert len((await session.execute(select(Rule))).scalars().all()) == 2
