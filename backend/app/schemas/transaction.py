@@ -258,6 +258,14 @@ class FailedRow(BaseModel):
     error_reason: str
 
 
+class ImportSource(BaseModel):
+    """One account/currency found inside a bank export that holds several."""
+
+    name: str
+    currency: str
+    row_count: int
+
+
 class TransactionImportPreview(BaseModel):
     transactions: list[TransactionImport]
     detected_format: str
@@ -268,6 +276,14 @@ class TransactionImportPreview(BaseModel):
     # succeeds (with no transactions) so the UI can show the mapping dropdowns.
     parse_error: Optional[str] = None
     failed_rows: list[FailedRow] = []
+    # Set when the CSV was recognised as a known bank export and converted.
+    detected_bank: Optional[str] = None
+    # Every account/currency the export holds; `source` picks which one the
+    # preview shows. Only populated for recognised bank exports.
+    sources: list[ImportSource] = []
+    selected_source: Optional[str] = None
+    # Notes from the conversion (e.g. a debit/credit sign mismatch).
+    warnings: list[str] = []
 
 
 class TransactionImportRequest(BaseModel):

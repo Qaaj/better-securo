@@ -469,6 +469,24 @@ export interface ImportLog {
   created_at: string
 }
 
+export interface ImportSource {
+  name: string
+  currency: string
+  row_count: number
+}
+
+export interface ImportPreviewResponse {
+  transactions: ImportPreviewTransaction[]
+  detected_format: string
+  csv_columns?: string[]
+  parse_error?: string | null
+  failed_rows?: FailedRow[]
+  detected_bank?: string | null
+  sources?: ImportSource[]
+  selected_source?: string | null
+  warnings?: string[]
+}
+
 export interface ImportPreviewTransaction {
   description: string
   amount: number

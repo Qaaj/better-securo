@@ -11,7 +11,11 @@ from app.core.workspace_context import (
     current_workspace,
     current_writable_workspace,
 )
-from app.schemas.transaction import TransactionImportPreview, TransactionImportRequest
+from app.schemas.transaction import (
+    ImportSource,
+    TransactionImportPreview,
+    TransactionImportRequest,
+)
 from app.services import account_service, import_service
 
 logger = logging.getLogger(__name__)
@@ -27,6 +31,9 @@ async def preview_import(
     inflow_column: Optional[str] = Form(None),
     outflow_column: Optional[str] = Form(None),
     column_mapping: Optional[str] = Form(None),
+    # Which account/currency to preview when a recognised bank export holds
+    # several (matches `sources[].name` from the previous response).
+    source: Optional[str] = Form(None),
     # Read-gated on purpose, and the exception is deliberate rather than an
     # oversight. This is a POST because it takes a file upload, not because
     # it changes anything: it parses the upload and returns what *would* be
@@ -64,6 +71,43 @@ async def preview_import(
 
     parse_error: Optional[str] = None
     failed_rows = []
+    detected_bank: Optional[str] = None
+    sources: list[ImportSource] = []
+    selected_source: Optional[str] = None
+    conversion_warnings: list[str] = []
+
+    # Known bank CSV exports (Revolut, Millennium, Belfius) are converted to
+    # Securo's own CSV layout first, then go through the normal CSV parser.
+    if filename.lower().endswith(".csv") and not parsed_mapping:
+        try:
+            converted = import_service.convert_bank_csv(content, filename)
+        except Exception as e:
+            logger.error("Bank export conversion failed: filename=%s, error=%s", filename, e, exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to convert bank export: {str(e)}",
+            )
+        if converted is not None:
+            detected_bank, files = converted
+            if not files:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No importable transactions found in this bank export",
+                )
+            sources = [
+                ImportSource(name=f.name, currency=f.currency, row_count=f.row_count)
+                for f in files
+            ]
+            chosen = next((f for f in files if f.name == source), files[0])
+            selected_source = chosen.name
+            conversion_warnings = list(chosen.warnings)
+            content = chosen.to_csv_bytes()
+            parsed_mapping = import_service.BANK_CSV_COLUMN_MAPPING
+            # The converted CSV is always ISO dates with signed amounts.
+            date_format = None
+            flip_amount = False
+            inflow_column = outflow_column = None
+
     try:
         if filename.lower().endswith('.ofx') or filename.lower().endswith('.qfx'):
             transactions = import_service.parse_ofx(content)
@@ -139,9 +183,16 @@ async def preview_import(
         except Exception:
             csv_columns = []
 
+    if detected_bank:
+        detected_format = detected_bank
+
     return TransactionImportPreview(
         transactions=transactions,
         detected_format=detected_format,
+        detected_bank=detected_bank,
+        sources=sources,
+        selected_source=selected_source,
+        warnings=conversion_warnings,
         csv_columns=csv_columns,
         parse_error=parse_error,
         failed_rows=failed_rows,
