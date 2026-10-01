@@ -132,3 +132,82 @@ async def test_a_workspace_without_history_still_gets_a_review(
     assert body["usual"] is None and body["previous_month"] is None and body["usual_months"] == 0
     assert body["movers_up"] == [] and body["movers_down"] == []
     assert body["new_merchants"][0]["name"] == "First Ever"
+
+
+# ------------------------------------------------------------------ insights
+async def _review(client, auth_headers):
+    return (await client.get(f"/api/reports/monthly-review?month={MONTH}", headers=auth_headers)).json()
+
+
+def _kinds(body, kind):
+    return [i for i in body["insights"] if i["kind"] == kind]
+
+
+@pytest.mark.asyncio
+async def test_a_charge_that_appears_twice_within_days_is_flagged_as_a_possible_duplicate(
+    client, auth_headers, session, test_user, test_workspace, test_account, history
+):
+    await _tx(session, test_user, test_workspace, test_account, date(2026, 6, 10), 64.90, "debit", "Hardware Store 12")
+    await _tx(session, test_user, test_workspace, test_account, date(2026, 6, 12), 64.90, "debit", "Hardware Store 12")
+    dup = _kinds(await _review(client, auth_headers), "duplicate")
+    assert len(dup) == 1
+    assert dup[0]["amount"] == pytest.approx(64.9) and dup[0]["count"] == 2
+    assert dup[0]["dates"] == ["2026-06-10", "2026-06-12"]
+
+
+@pytest.mark.asyncio
+async def test_repeats_that_are_not_suspicious_are_left_alone(
+    client, auth_headers, session, test_user, test_workspace, test_account, history
+):
+    # Too far apart, too small, and linked to a recurring item.
+    await _tx(session, test_user, test_workspace, test_account, date(2026, 6, 1), 40, "debit", "Far Apart Shop")
+    await _tx(session, test_user, test_workspace, test_account, date(2026, 6, 20), 40, "debit", "Far Apart Shop")
+    await _tx(session, test_user, test_workspace, test_account, date(2026, 6, 5), 4, "debit", "Tiny Coffee")
+    await _tx(session, test_user, test_workspace, test_account, date(2026, 6, 6), 4, "debit", "Tiny Coffee")
+    await _tx(session, test_user, test_workspace, test_account, date(2026, 6, 7), 30, "debit", "Gym", recurring_transaction_id=uuid.uuid4())
+    await _tx(session, test_user, test_workspace, test_account, date(2026, 6, 8), 30, "debit", "Gym", recurring_transaction_id=uuid.uuid4())
+    assert _kinds(await _review(client, auth_headers), "duplicate") == []
+
+
+@pytest.mark.asyncio
+async def test_a_payment_far_above_what_a_merchant_usually_gets_is_flagged(
+    client, auth_headers, session, test_user, test_workspace, test_account
+):
+    for month in (2, 3, 4, 5):
+        await _tx(session, test_user, test_workspace, test_account, date(2026, month, 9), 22 + month, "debit", "Corner Restaurant")
+    await _tx(session, test_user, test_workspace, test_account, date(2026, 6, 9), 240, "debit", "Corner Restaurant")
+    unusual = _kinds(await _review(client, auth_headers), "unusual")
+    assert len(unusual) == 1
+    assert unusual[0]["amount"] == 240 and unusual[0]["previous"] == pytest.approx(25.5)
+
+
+@pytest.mark.asyncio
+async def test_an_ordinary_variation_is_not_unusual(
+    client, auth_headers, session, test_user, test_workspace, test_account
+):
+    for month in (2, 3, 4, 5):
+        await _tx(session, test_user, test_workspace, test_account, date(2026, month, 9), 100, "debit", "Corner Restaurant")
+    await _tx(session, test_user, test_workspace, test_account, date(2026, 6, 9), 180, "debit", "Corner Restaurant")
+    assert _kinds(await _review(client, auth_headers), "unusual") == []
+
+
+@pytest.mark.asyncio
+async def test_a_fixed_price_that_changed_is_flagged(
+    client, auth_headers, session, test_user, test_workspace, test_account
+):
+    for month in (3, 4, 5):
+        await _tx(session, test_user, test_workspace, test_account, date(2026, month, 3), 9.99, "debit", "Streaming Plus")
+    await _tx(session, test_user, test_workspace, test_account, date(2026, 6, 3), 12.99, "debit", "Streaming Plus")
+    change = _kinds(await _review(client, auth_headers), "price_change")
+    assert len(change) == 1
+    assert (change[0]["previous"], change[0]["amount"]) == (9.99, 12.99)
+
+
+@pytest.mark.asyncio
+async def test_a_price_that_never_was_fixed_is_not_a_price_change(
+    client, auth_headers, session, test_user, test_workspace, test_account
+):
+    for month, amount in ((3, 40), (4, 55), (5, 38)):
+        await _tx(session, test_user, test_workspace, test_account, date(2026, month, 3), amount, "debit", "Variable Utility")
+    await _tx(session, test_user, test_workspace, test_account, date(2026, 6, 3), 70, "debit", "Variable Utility")
+    assert _kinds(await _review(client, auth_headers), "price_change") == []

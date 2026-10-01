@@ -1726,6 +1726,15 @@ export interface ReviewLargeTransaction {
   category_name: string | null
 }
 
+export interface ReviewInsight {
+  kind: 'duplicate' | 'unusual' | 'price_change'
+  description: string
+  amount: number
+  previous: number | null
+  count: number
+  dates: string[]
+}
+
 export interface MonthlyReview {
   month: string
   currency: string
@@ -1745,4 +1754,5 @@ export interface MonthlyReview {
   moved_between_accounts: number
   moved_count: number
   year: { month: string; income: number; expenses: number; saved: number }[]
+  insights: ReviewInsight[]
 }

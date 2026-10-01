@@ -8,9 +8,10 @@ own accounts is reported on its own line so the exclusion is visible, not
 silent."""
 from __future__ import annotations
 
+import statistics
 import uuid
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from sqlalchemy import func, select
@@ -79,6 +80,7 @@ async def monthly_review(
                 Transaction.category_id,
                 Transaction.description,
                 Transaction.recurring_transaction_id,
+                Transaction.account_id,
             )
             .join(Account, Transaction.account_id == Account.id)
             .where(
@@ -105,7 +107,8 @@ async def monthly_review(
     large: list = []
     recurring = other = uncategorized = 0.0
 
-    for tx_id, tx_date, tx_type, amount, primary, category_id, description, recurring_id in rows:
+    expense_rows: list[tuple] = []
+    for tx_id, tx_date, tx_type, amount, primary, category_id, description, recurring_id, account_id in rows:
         value = _amount(amount, primary)
         k = _key(tx_date)
         if tx_type == "credit":
@@ -114,6 +117,7 @@ async def monthly_review(
         expense_by_month[k] += value
         category_by_month[category_id][k] += value
         merchant = merchant_key(description)
+        expense_rows.append((tx_date, value, merchant, description, recurring_id, account_id))
         if tx_date < start:
             if merchant:
                 merchants_before.add(merchant)
@@ -233,4 +237,84 @@ async def monthly_review(
         "moved_between_accounts": round(float(moved_amount or 0), 2),
         "moved_count": int(moved_count or 0),
         "year": year_rows,
+        "insights": _insights(expense_rows, start),
     }
+
+
+# ---------------------------------------------------------------- insights
+DUPLICATE_DAYS = 3
+DUPLICATE_MIN_AMOUNT = 10.0
+UNUSUAL_FACTOR = 3.0
+UNUSUAL_MIN_EXTRA = 50.0
+UNUSUAL_MIN_HISTORY = 4
+PRICE_MIN_HISTORY_MONTHS = 3
+PRICE_STABLE = 0.01  # earlier charges within 1% of each other count as a fixed price
+PRICE_MIN_CHANGE = 0.03
+MAX_PER_KIND = 3
+
+
+def _insights(expense_rows: list[tuple], start: date) -> list[dict]:
+    """Things worth a second look in the month: a charge that appears twice in a
+    few days, a payment far above what a merchant usually gets, a fixed price
+    that changed. Computed from the same rows as the rest of the review, so
+    transfers and ignored rows are already out."""
+    by_merchant: dict[str, list[tuple]] = defaultdict(list)
+    for row in expense_rows:
+        if row[2]:
+            by_merchant[row[2]].append(row)
+
+    end = add_months(start, 1)
+    found: dict[str, list[tuple[float, dict]]] = {"duplicate": [], "unusual": [], "price_change": []}
+
+    for merchant, items in by_merchant.items():
+        before = sorted((r for r in items if r[0] < start), key=lambda r: r[0])
+        now = sorted((r for r in items if start <= r[0] < end), key=lambda r: r[0])
+        if not now:
+            continue
+
+        # The same amount charged twice within a few days, on the same account.
+        groups: dict[tuple, list[tuple]] = defaultdict(list)
+        for r in now:
+            if r[4] is None and r[1] >= DUPLICATE_MIN_AMOUNT:
+                groups[(r[5], round(r[1], 2))].append(r)
+        for (_, amount), same in groups.items():
+            if len(same) < 2:
+                continue
+            cluster = [same[0]]
+            for r in same[1:]:
+                if (r[0] - cluster[-1][0]) <= timedelta(days=DUPLICATE_DAYS):
+                    cluster.append(r)
+            if len(cluster) >= 2:
+                found["duplicate"].append(
+                    (amount * (len(cluster) - 1), {"kind": "duplicate", "description": cluster[0][3], "amount": amount, "count": len(cluster), "dates": [c[0] for c in cluster]})
+                )
+
+        # Far above what this merchant usually gets.
+        if len(before) >= UNUSUAL_MIN_HISTORY:
+            usual = statistics.median(r[1] for r in before)
+            for r in now:
+                if usual > 0 and r[1] >= usual * UNUSUAL_FACTOR and r[1] - usual >= UNUSUAL_MIN_EXTRA:
+                    found["unusual"].append(
+                        (r[1] - usual, {"kind": "unusual", "description": r[3], "amount": round(r[1], 2), "previous": round(usual, 2), "dates": [r[0]]})
+                    )
+
+        # A price that was the same every time and now is not.
+        months_before = {(r[0].year, r[0].month) for r in before}
+        if len(months_before) >= PRICE_MIN_HISTORY_MONTHS:
+            amounts = [r[1] for r in before]
+            low, high = min(amounts), max(amounts)
+            if low > 0 and (high - low) / low <= PRICE_STABLE:
+                price = statistics.median(amounts)
+                for r in now:
+                    change = (r[1] - price) / price
+                    if abs(change) >= PRICE_MIN_CHANGE and not any(abs(r[1] - a) / price <= PRICE_STABLE for a in amounts):
+                        found["price_change"].append(
+                            (abs(r[1] - price), {"kind": "price_change", "description": r[3], "amount": round(r[1], 2), "previous": round(price, 2), "dates": [r[0]]})
+                        )
+                        break
+
+    insights: list[dict] = []
+    for kind in ("duplicate", "price_change", "unusual"):
+        ranked = sorted(found[kind], key=lambda t: -t[0])[:MAX_PER_KIND]
+        insights.extend(item for _, item in ranked)
+    return insights

@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { Button } from '@/components/ui/button'
-import type { MonthlyReview, ReviewCategoryLine } from '@/types'
+import type { MonthlyReview, ReviewCategoryLine, ReviewInsight } from '@/types'
 
 const TOP_CATEGORIES = 10
 
@@ -91,6 +91,7 @@ function ReviewBody({ review, month, locale, mask }: { review: MonthlyReview; mo
         <FigureTile label={t('reports.review.saved')} value={money(now.saved)} compare={null} tone={now.saved >= 0 ? 'positive' : 'negative'} hint={now.savings_rate != null ? t('reports.review.ofIncome', { pct: Math.round(now.savings_rate * 100) }) : undefined} />
       </div>
 
+      <WorthALook insights={review.insights ?? []} month={month} money={money} />
       <WhereItWent review={review} month={month} money={money} />
       <WhatChanged review={review} money={money} locale={locale} />
       <FixedOrFlexible review={review} money={money} />
@@ -183,6 +184,39 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <p className="px-4 sm:px-5 py-3 border-b border-border text-sm font-semibold text-foreground">{title}</p>
       <div className="px-4 sm:px-5 py-3">{children}</div>
     </div>
+  )
+}
+
+function WorthALook({ insights, month, money }: { insights: ReviewInsight[]; month: string; money: (v: number) => string }) {
+  const { t } = useTranslation()
+  if (insights.length === 0) return null
+  const sentence = (i: ReviewInsight): string => {
+    if (i.kind === 'duplicate') return t('reports.review.insightDuplicate', { description: i.description, count: i.count, amount: money(i.amount) })
+    if (i.kind === 'unusual') {
+      const times = i.previous ? Math.round((i.amount / i.previous) * 10) / 10 : 0
+      return t('reports.review.insightUnusual', { description: i.description, amount: money(i.amount), times, usual: money(i.previous ?? 0) })
+    }
+    const pct = i.previous ? Math.round(((i.amount - i.previous) / i.previous) * 100) : 0
+    return t(pct >= 0 ? 'reports.review.insightPriceUp' : 'reports.review.insightPriceDown', {
+      description: i.description, previous: money(i.previous ?? 0), amount: money(i.amount), pct: Math.abs(pct),
+    })
+  }
+  return (
+    <Section title={t('reports.review.worthTitle')}>
+      <ul className="space-y-2">
+        {insights.map((i, n) => (
+          <li key={`${i.kind}-${i.description}-${n}`} className="text-sm">
+            <Link
+              to={`/transactions?q=${encodeURIComponent(i.description.slice(0, 30))}&from=${month}&to=${lastDay(month)}`}
+              className="hover:underline"
+            >
+              {sentence(i)}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[11px] text-muted-foreground mt-2">{t('reports.review.worthHint')}</p>
+    </Section>
   )
 }
 

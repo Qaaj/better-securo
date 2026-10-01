@@ -27,6 +27,7 @@ function review(over: Partial<MonthlyReview> = {}): MonthlyReview {
     recurring_expenses: 1200, other_expenses: 1200, uncategorized_expenses: 1400, uncategorized_share: 0.5833,
     moved_between_accounts: 700, moved_count: 2,
     year: [{ month: '2026-05', income: 3000, expenses: 2000, saved: 1000 }, { month: '2026-06', income: 3000, expenses: 2400, saved: 600 }],
+    insights: [],
     ...over,
   }
 }
@@ -94,4 +95,28 @@ it('says so when there is not enough history, and when the month is empty', asyn
   api.reports.monthlyReview.mockResolvedValue(review({ this_month: figures(0, 0) }))
   renderWithProviders(<MonthlyReviewPanel />)
   expect(await screen.findByText('No income or spending recorded this month.')).toBeInTheDocument()
+})
+
+it('shows what is worth a second look, each linking to the matching transactions', async () => {
+  api.reports.monthlyReview.mockResolvedValue(review({
+    insights: [
+      { kind: 'duplicate', description: 'Hardware Store', amount: 65, previous: null, count: 2, dates: ['2026-06-10', '2026-06-12'] },
+      { kind: 'price_change', description: 'Streaming Plus', amount: 13, previous: 10, count: 1, dates: ['2026-06-03'] },
+      { kind: 'price_change', description: 'Cheaper Plan', amount: 8, previous: 10, count: 1, dates: ['2026-06-03'] },
+      { kind: 'unusual', description: 'Corner Restaurant', amount: 240, previous: 24, count: 1, dates: ['2026-06-09'] },
+    ],
+  }))
+  renderWithProviders(<MonthlyReviewPanel />)
+  expect(await screen.findByText('Worth a look')).toBeInTheDocument()
+  expect(screen.getByText('Hardware Store was charged 2 times for €65 within a few days. A double charge?')).toBeInTheDocument()
+  expect(screen.getByText('Streaming Plus went up from €10 to €13 (+30%).')).toBeInTheDocument()
+  expect(screen.getByText('Cheaper Plan went down from €10 to €8 (−20%).')).toBeInTheDocument()
+  expect(screen.getByText('Corner Restaurant: €240 is 10× what you usually pay there (€24).')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: /Hardware Store was charged/ })).toHaveAttribute('href', expect.stringContaining('/transactions?q=Hardware%20Store&from='))
+})
+
+it('leaves the section out when there is nothing to look at', async () => {
+  renderWithProviders(<MonthlyReviewPanel />)
+  await screen.findByText(/You spent/)
+  expect(screen.queryByText('Worth a look')).not.toBeInTheDocument()
 })
