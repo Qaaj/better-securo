@@ -24,6 +24,9 @@ class Category(Base):
     name: Mapped[str] = mapped_column(String(100))
     icon: Mapped[str] = mapped_column(String(50), default="circle-help")
     color: Mapped[str] = mapped_column(String(7), default="#6B7280")
+    # What the category is for, in the owner's words. Read by the automatic
+    # categorizer so the model follows their conventions.
+    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 

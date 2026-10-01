@@ -19,6 +19,9 @@ import {
 } from '@/components/ui/dialog'
 import type { Category, CategoryGroup, CategoryUsage } from '@/types'
 import { Pencil, Trash2, Plus, ChevronDown, ChevronRight, ChevronsUpDown, Eye, EyeOff } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { CategorizerAutomate } from '@/components/categorizer-automate'
+import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/page-header'
 import { invalidateCategoryQueries } from '@/lib/invalidate-queries'
 import { CategoryIcon } from '@/components/category-icon'
@@ -45,7 +48,7 @@ function SectionHeader({ title, titleExtra, action }: { title: string; titleExtr
   )
 }
 
-export default function CategoriesPage() {
+function CategoriesManager() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { canWrite } = useWorkspace()
@@ -313,8 +316,6 @@ export default function CategoriesPage() {
 
   return (
     <div>
-      <PageHeader section={t('categories.title')} title={t('categories.title')} />
-
       <p className="mb-4 text-sm text-muted-foreground">
         {t('categories.hiddenScopeDescription')}
       </p>
@@ -430,7 +431,8 @@ export default function CategoriesPage() {
                 color: formData.get('color') as string,
                 group_id: (formData.get('group_id') as string) || null,
                 treat_as_transfer: formTreatAsTransfer,
-                is_ignored: formIgnoreTransfer
+                is_ignored: formIgnoreTransfer,
+                description: ((formData.get('description') as string) || '').trim() || null
               }
               if (editingCat) {
                 updateCatMutation.mutate({ id: editingCat.id, ...data })
@@ -444,6 +446,17 @@ export default function CategoriesPage() {
               <div className="space-y-2">
                 <Label>{t('groups.name')}</Label>
                 <Input name="name" defaultValue={editingCat?.name ?? ''} required />
+              </div>
+              <div className="space-y-2">
+                <Label>{t('categories.descriptionLabel')}</Label>
+                <textarea
+                  name="description"
+                  defaultValue={editingCat?.description ?? ''}
+                  maxLength={500}
+                  rows={2}
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                />
+                <p className="text-xs text-muted-foreground">{t('categories.descriptionHint')}</p>
               </div>
               <div className="space-y-2">
                 <Label>{t('categories.group')}</Label>
@@ -696,6 +709,25 @@ export default function CategoriesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+export default function CategoriesPage() {
+  const { t } = useTranslation()
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'automate' ? 'automate' : 'categories'
+  return (
+    <div>
+      <PageHeader section={t('categories.title')} title={t('categories.title')} />
+      <Tabs value={tab} onValueChange={(value) => setParams(value === 'automate' ? { tab: 'automate' } : {})}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="categories">{t('categories.tabCategories')}</TabsTrigger>
+          <TabsTrigger value="automate">{t('categories.tabAutomate')}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="categories"><CategoriesManager /></TabsContent>
+        <TabsContent value="automate"><CategorizerAutomate /></TabsContent>
+      </Tabs>
     </div>
   )
 }

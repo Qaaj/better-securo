@@ -8,6 +8,7 @@ from app.models.institution import Institution
 from app.models.account import Account
 from app.models.transaction import Transaction
 from app.models.rule import Rule
+from app.models.categorization import CategorizationJob, CategorizationSuggestion
 from app.models.recurring_transaction import RecurringTransaction
 from app.models.import_log import ImportLog
 from app.models.asset import Asset
@@ -43,6 +44,8 @@ from app.models.reconciliation import (
 from app.core import workspace_autostamp  # noqa: F401, E402
 
 __all__ = [
+    "CategorizationJob",
+    "CategorizationSuggestion",
     "User",
     "UserPasskey",
     "Workspace",

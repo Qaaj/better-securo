@@ -1,13 +1,14 @@
 import uuid
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CategoryBase(BaseModel):
     name: str
     icon: str = "circle-help"
     color: str = "#6B7280"
+    description: Optional[str] = Field(default=None, max_length=500)
 
 
 class CategoryCreate(CategoryBase):
@@ -18,6 +19,7 @@ class CategoryCreate(CategoryBase):
 
 class CategoryUpdate(BaseModel):
     name: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=500)
     icon: Optional[str] = None
     color: Optional[str] = None
     group_id: Optional[uuid.UUID] = None
