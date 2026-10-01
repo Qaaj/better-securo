@@ -1313,6 +1313,13 @@
   },
   "recurring": {
     "title": "定期取引",
+    "totalMonthly": "Monthly recurring",
+    "totalMonthlyHint": "{{count}} monthly expenses",
+    "totalYearly": "Yearly recurring",
+    "totalYearlyHint": "{{count}} yearly expenses",
+    "totalPerMonth": "Combined per month",
+    "totalPerMonthHint": "Everything averaged to a month · {{year}} a year",
+    "totalSkipped": "{{count}} item(s) in another currency without a conversion are not counted",
     "add": "定期取引を追加",
     "edit": "定期取引を編集",
     "description": "摘要",

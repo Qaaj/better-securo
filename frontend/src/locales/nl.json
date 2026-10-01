@@ -1315,6 +1315,13 @@
   },
   "recurring": {
     "title": "Terugkerende transacties",
+    "totalMonthly": "Monthly recurring",
+    "totalMonthlyHint": "{{count}} monthly expenses",
+    "totalYearly": "Yearly recurring",
+    "totalYearlyHint": "{{count}} yearly expenses",
+    "totalPerMonth": "Combined per month",
+    "totalPerMonthHint": "Everything averaged to a month · {{year}} a year",
+    "totalSkipped": "{{count}} item(s) in another currency without a conversion are not counted",
     "add": "Terugkerend toevoegen",
     "edit": "Bewerken Terugkerend",
     "description": "Beschrijving",

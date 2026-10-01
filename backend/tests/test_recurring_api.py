@@ -156,6 +156,7 @@ async def test_generate_pending_creates_transactions(client, auth_headers, test_
             "frequency": "weekly",
             "start_date": "2026-02-01",
             "account_id": str(test_account.id),
+            "auto_generate": True,
         },
         headers=auth_headers,
     )
@@ -479,3 +480,26 @@ async def test_weekend_adjustment_update_rejects_null_but_allows_omission(
         row for row in list_response.json() if row["id"] == recurring_id
     )
     assert listed["weekend_adjustment"] == "previous_friday"
+
+
+@pytest.mark.asyncio
+async def test_new_recurring_does_not_generate_by_default(client, auth_headers, test_account):
+    """A new recurring item only forecasts: no ledger rows are written for it."""
+    resp = await client.post(
+        "/api/recurring-transactions",
+        json={
+            "description": "Forecast only",
+            "amount": 12.00,
+            "currency": "BRL",
+            "type": "debit",
+            "frequency": "weekly",
+            "start_date": "2026-02-01",
+            "account_id": str(test_account.id),
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["auto_generate"] is False
+
+    gen = await client.post("/api/recurring-transactions/generate", headers=auth_headers)
+    assert gen.json()["generated"] == 0
