@@ -21,6 +21,16 @@ import type { CategorizationJob, CategorizationSuggestion, Category, CategoryGro
 
 const ACTIVE = new Set(['pending', 'running'])
 const RULES_KEY = 'categorizer:create-rules'
+const SORT_KEY = 'categorizer:sort'
+type SuggestionSort = 'value' | 'count'
+
+function loadSort(): SuggestionSort {
+  try {
+    return window.localStorage.getItem(SORT_KEY) === 'count' ? 'count' : 'value'
+  } catch {
+    return 'value'
+  }
+}
 
 function loadCreateRules(): boolean {
   try {
@@ -159,6 +169,16 @@ function ReviewList({ job, canWrite }: { job: CategorizationJob; canWrite: boole
   const currency = user?.preferences?.currency_display ?? 'USD'
   // Remembered between visits: whether accepting also makes a rule for the merchant.
   const [createRules, setCreateRules] = useState(loadCreateRules)
+  // Highest total value first by default; changing it is the only thing that reloads the list.
+  const [sort, setSort] = useState<SuggestionSort>(loadSort)
+  const changeSort = (value: SuggestionSort) => {
+    setSort(value)
+    try {
+      window.localStorage.setItem(SORT_KEY, value)
+    } catch {
+      // Blocked storage: the choice just does not persist.
+    }
+  }
   const changeCreateRules = (value: boolean) => {
     setCreateRules(value)
     try {
@@ -173,10 +193,10 @@ function ReviewList({ job, canWrite }: { job: CategorizationJob; canWrite: boole
 
   // The key is the job alone. Keying it on live counters would throw the list
   // away on every poll or accepted row, and with it the choices being made.
-  const listKey = ['categorization', 'suggestions', job.id] as const
+  const listKey = ['categorization', 'suggestions', job.id, sort] as const
   const { data: suggestions } = useQuery({
     queryKey: listKey,
-    queryFn: () => api.suggestions(job.id),
+    queryFn: () => api.suggestions(job.id, 50, sort),
     placeholderData: keepPreviousData,
     refetchOnWindowFocus: false,
     // New suggestions only arrive while the job runs.
@@ -235,6 +255,19 @@ function ReviewList({ job, canWrite }: { job: CategorizationJob; canWrite: boole
             {t('categories.automate.reviewCounts', { pending: job.counts.pending, accepted: job.counts.accepted })}
           </p>
         </div>
+        {job.counts.pending > 0 && (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            {t('categories.automate.sortLabel')}
+            <select
+              className="border border-border rounded-md px-2 py-1 text-xs bg-card text-foreground"
+              value={sort}
+              onChange={(e) => changeSort(e.target.value as SuggestionSort)}
+            >
+              <option value="value">{t('categories.automate.sortValue')}</option>
+              <option value="count">{t('categories.automate.sortCount')}</option>
+            </select>
+          </label>
+        )}
         {canWrite && job.counts.pending > 0 && (
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer" title={t('categories.automate.createRulesHint')}>
@@ -274,7 +307,7 @@ function ReviewList({ job, canWrite }: { job: CategorizationJob; canWrite: boole
       )}
       {suggestions && suggestions.total > items.length && (
         <p className="px-5 py-3 text-xs text-muted-foreground border-t border-border">
-          {t('categories.automate.showing', { shown: items.length, total: suggestions.total })}
+          {t(sort === 'value' ? 'categories.automate.showingByValue' : 'categories.automate.showing', { shown: items.length, total: suggestions.total })}
         </p>
       )}
     </div>

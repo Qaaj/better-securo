@@ -152,6 +152,7 @@ async def cancel_categorization(
 async def list_suggestions(
     job_id: uuid.UUID,
     status_filter: str = Query("pending", alias="status", pattern="^(pending|accepted|rejected)$"),
+    sort: str = Query("value", pattern="^(value|count)$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     ctx: WorkspaceContext = Depends(current_workspace),
@@ -162,9 +163,12 @@ async def list_suggestions(
         CategorizationSuggestion.job_id == job_id, CategorizationSuggestion.status == status_filter
     )
     total = (await session.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+    # Most money first by default: reviewing is work, so the merchants that matter most come first.
+    primary = CategorizationSuggestion.total_amount_primary if sort == "value" else CategorizationSuggestion.tx_count
+    secondary = CategorizationSuggestion.tx_count if sort == "value" else CategorizationSuggestion.total_amount_primary
     rows = (
         await session.execute(
-            base.order_by(CategorizationSuggestion.tx_count.desc(), CategorizationSuggestion.merchant_key).limit(limit).offset(offset)
+            base.order_by(primary.desc(), secondary.desc(), CategorizationSuggestion.merchant_key).limit(limit).offset(offset)
         )
     ).scalars().all()
     return SuggestionList(items=[SuggestionRead.model_validate(r) for r in rows], total=total)

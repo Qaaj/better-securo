@@ -1074,8 +1074,8 @@ export const categorization = {
     const { data } = await api.post(`/categorization/jobs/${jobId}/cancel`)
     return data
   },
-  suggestions: async (jobId: string, limit = 50): Promise<{ items: CategorizationSuggestion[]; total: number }> => {
-    const { data } = await api.get(`/categorization/jobs/${jobId}/suggestions`, { params: { status: 'pending', limit } })
+  suggestions: async (jobId: string, limit = 50, sort: 'value' | 'count' = 'value'): Promise<{ items: CategorizationSuggestion[]; total: number }> => {
+    const { data } = await api.get(`/categorization/jobs/${jobId}/suggestions`, { params: { status: 'pending', limit, sort } })
     return data
   },
   accept: async (id: string, categoryId?: string, createRule = false): Promise<CategorizationSuggestion> => {

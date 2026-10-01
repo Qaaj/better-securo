@@ -288,7 +288,8 @@ async def run_job(session_maker: async_sessionmaker, job_id: uuid.UUID, classifi
 
             job.total_merchants = len(groups)
             pending_llm: list[dict] = []
-            for g in sorted(groups.values(), key=lambda g: -g["count"]):
+            # Biggest totals first, so the merchants that matter most are ready to review soonest.
+            for g in sorted(groups.values(), key=lambda g: (-g["total"], -g["count"])):
                 seen = history.get(g["key"])
                 top = seen.most_common(1)[0] if seen else None
                 if top and top[0] in by_id and top[1] / sum(seen.values()) >= HISTORY_AGREEMENT:
