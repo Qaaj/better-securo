@@ -52,11 +52,12 @@ export interface Assumptions {
 }
 
 export type WhatIf =
-  | { id: string; kind: 'income' | 'expense'; label: string; monthly: number; fromYear: number; toYear?: number }
+  /** `inflates: false` keeps the amount the same instead of rising with inflation (default: it rises). */
+  | { id: string; kind: 'income' | 'expense'; label: string; monthly: number; fromYear: number; toYear?: number; inflates?: boolean }
   | { id: string; kind: 'oneoff'; label: string; amount: number; year: number }
   | { id: string; kind: 'sell'; label: string; assetId: string; year: number; feesPercent: number }
   /** From this year on, spend this much a month (today's money) instead of the recurring outgoings. */
-  | { id: string; kind: 'spend'; label: string; monthly: number; fromYear: number }
+  | { id: string; kind: 'spend'; label: string; monthly: number; fromYear: number; inflates?: boolean }
 
 export interface ProjectionInput {
   /** Counted recurring income per month, today's money. */
@@ -147,8 +148,9 @@ export function projectRetirement(input: ProjectionInput): Projection {
     let outgoingFlatMonthly = input.outgoingFlatMonthly ?? 0
     for (const w of input.whatIfs) {
       if (w.kind === 'spend' && year >= w.fromYear) {
-        outgoingMonthly = w.monthly
-        outgoingFlatMonthly = 0
+        // Replaces both kinds of recurring outgoing; flat when it should not inflate.
+        outgoingMonthly = w.inflates === false ? 0 : w.monthly
+        outgoingFlatMonthly = w.inflates === false ? w.monthly : 0
       }
     }
     let outgoing = outgoingMonthly * 12 * inflate + outgoingFlatMonthly * 12
@@ -157,8 +159,8 @@ export function projectRetirement(input: ProjectionInput): Projection {
     let saleIncome = 0
 
     for (const w of input.whatIfs) {
-      if (w.kind === 'income' && active(w, year)) income += w.monthly * 12 * incomeInflate
-      if (w.kind === 'expense' && active(w, year)) outgoing += w.monthly * 12 * inflate
+      if (w.kind === 'income' && active(w, year)) income += w.monthly * 12 * (w.inflates === false ? 1 : incomeInflate)
+      if (w.kind === 'expense' && active(w, year)) outgoing += w.monthly * 12 * (w.inflates === false ? 1 : inflate)
       if (w.kind === 'oneoff' && w.year === year) oneOffs += w.amount
       if (w.kind === 'sell' && w.year === year) {
         const asset = holdings.find((h) => h.id === w.assetId && h.held)

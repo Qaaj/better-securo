@@ -303,3 +303,27 @@ describe('what inflation applies to', () => {
     expect(p.rows[1].outgoing).toBeCloseTo(2_000 * 12 * 1.1)
   })
 })
+
+describe('what-if amounts and inflation', () => {
+  const base = { assets: [pool(1_000_000)], assumptions: { inflationPercent: 10, horizonYears: 3 } }
+
+  it('lets an extra cost rise with inflation by default and stay the same when asked', () => {
+    const rising = run({ ...base, whatIfs: [{ id: '1', kind: 'expense', label: 'x', monthly: 1_000, fromYear: 0 }] })
+    const fixed = run({ ...base, whatIfs: [{ id: '1', kind: 'expense', label: 'x', monthly: 1_000, fromYear: 0, inflates: false }] })
+    expect(rising.rows[2].outgoing).toBeCloseTo(12_000 * 1.21)
+    expect(fixed.rows[2].outgoing).toBeCloseTo(12_000)
+  })
+
+  it('does the same for an extra income', () => {
+    const rising = run({ ...base, whatIfs: [{ id: '1', kind: 'income', label: 'x', monthly: 1_000, fromYear: 0 }] })
+    const fixed = run({ ...base, whatIfs: [{ id: '1', kind: 'income', label: 'x', monthly: 1_000, fromYear: 0, inflates: false }] })
+    expect(rising.rows[2].income).toBeCloseTo(12_000 * 1.21)
+    expect(fixed.rows[2].income).toBeCloseTo(12_000)
+  })
+
+  it('and for a fixed spend, which stays the same when it should not inflate', () => {
+    const fixed = run({ ...base, outgoingMonthly: 500, whatIfs: [{ id: 's', kind: 'spend', label: 'x', monthly: 2_000, fromYear: 1, inflates: false }] })
+    expect(fixed.rows[1].outgoing).toBeCloseTo(24_000)
+    expect(fixed.rows[2].outgoing).toBeCloseTo(24_000)
+  })
+})

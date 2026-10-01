@@ -121,3 +121,31 @@ it('shows income lines under the Income tab, and disables them when income is no
   expect(screen.getByRole('checkbox', { name: 'Inflation applies to Pension' })).toBeDisabled()
   expect(screen.getByText(/Income does not rise with inflation/)).toBeInTheDocument()
 })
+
+it('switches the chart to a table of years against assets', async () => {
+  const { user } = renderWithProviders(<RetirementProjection {...props} />)
+  await user.click(screen.getByRole('button', { name: 'Table' }))
+  expect(screen.getByRole('table')).toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: 'Bitcoin' })).toBeInTheDocument()
+  expect(screen.getAllByRole('row').length).toBe(2 + 30)
+})
+
+it('lets an extra cost stay the same instead of rising with inflation', async () => {
+  const { user } = renderWithProviders(<RetirementProjection {...props} />)
+  const box = screen.getByRole('checkbox', { name: 'Rises with inflation' })
+  expect(box).toBeChecked()
+  await user.click(box)
+  await user.type(screen.getByLabelText('Per month'), '500')
+  await user.click(screen.getByRole('button', { name: 'Add' }))
+
+  expect(screen.getByText(/stays the same/)).toBeInTheDocument()
+  expect(JSON.parse(window.localStorage.getItem('retirement:plan') ?? '{}').whatIfs[0]).toMatchObject({ kind: 'expense', monthly: 500, inflates: false })
+})
+
+it('keeps the inflation box for an extra income off while income is not indexed', async () => {
+  const { user } = renderWithProviders(<RetirementProjection {...props} />)
+  await user.selectOptions(screen.getByDisplayValue('Extra monthly cost'), 'income')
+  expect(screen.getByRole('checkbox', { name: 'Rises with inflation' })).toBeEnabled()
+  await user.click(screen.getByRole('checkbox', { name: /Income rises with inflation too/ }))
+  expect(screen.getByRole('checkbox', { name: 'Rises with inflation' })).toBeDisabled()
+})

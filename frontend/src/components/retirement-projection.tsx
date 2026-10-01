@@ -11,7 +11,7 @@ import {
   type WhatIf,
 } from '@/lib/retirement-projection'
 import { formatCurrency } from '@/lib/format'
-import { AssetsChart, type ChartMode } from '@/components/retirement-projection-charts'
+import { AssetsChart, AssetsTable, type ChartMode } from '@/components/retirement-projection-charts'
 import { cn } from '@/lib/utils'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { Button } from '@/components/ui/button'
@@ -246,7 +246,7 @@ export function RetirementProjection({
           <div className="flex items-center justify-between gap-3 mb-2">
             <p className="text-xs font-medium text-muted-foreground">{t('retirement.projection.chartAssets')}</p>
             <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
-              {(['total', 'assets'] as const).map((m) => (
+              {(['total', 'assets', 'table'] as const).map((m) => (
                 <button
                   key={m}
                   type="button"
@@ -258,22 +258,32 @@ export function RetirementProjection({
               ))}
             </div>
           </div>
-          <AssetsChart
-            scenario={scenario}
-            baseline={baseline}
-            hasWhatIfs={hasWhatIfs}
-            names={names}
-            drawableIds={drawableIds}
-            thisYear={thisYear}
-            currency={currency}
-            locale={locale}
-            mode={chartMode}
-            startYear={startYear}
-            endYear={endYear}
-            privacyMode={privacyMode}
-            mask={MASK}
-          />
-          <p className="text-[11px] text-muted-foreground mt-1">{t('retirement.projection.hoverHint')}</p>
+          {chartMode === 'table' ? (
+            <AssetsTable
+              scenario={scenario}
+              names={names}
+              drawableIds={drawableIds}
+              thisYear={thisYear}
+              money={money}
+            />
+          ) : (
+            <AssetsChart
+              scenario={scenario}
+              baseline={baseline}
+              hasWhatIfs={hasWhatIfs}
+              names={names}
+              drawableIds={drawableIds}
+              thisYear={thisYear}
+              currency={currency}
+              locale={locale}
+              mode={chartMode}
+              startYear={startYear}
+              endYear={endYear}
+              privacyMode={privacyMode}
+              mask={MASK}
+            />
+          )}
+          {chartMode !== 'table' && <p className="text-[11px] text-muted-foreground mt-1">{t('retirement.projection.hoverHint')}</p>}
         </div>
 
         <div>
@@ -330,6 +340,7 @@ export function RetirementProjection({
           assets={projectionAssets}
           horizon={horizon}
           thisYear={thisYear}
+          incomeIndexed={plan.assumptions.incomeIndexed}
           onChange={(whatIfs) => setPlan({ ...plan, whatIfs })}
         />
 
@@ -687,15 +698,18 @@ function WhatIfs({
   assets,
   horizon,
   thisYear,
+  incomeIndexed,
   onChange,
 }: {
   whatIfs: WhatIf[]
   assets: ProjectionAsset[]
   horizon: number
   thisYear: number
+  incomeIndexed: boolean
   onChange: (next: WhatIf[]) => void
 }) {
   const { t } = useTranslation()
+  const uid = useId()
   const [kind, setKind] = useState<Kind>('expense')
   const [label, setLabel] = useState('')
   const [amount, setAmount] = useState('')
@@ -703,6 +717,7 @@ function WhatIfs({
   const [toYear, setToYear] = useState('')
   const [assetId, setAssetId] = useState('')
   const [fees, setFees] = useState('0')
+  const [inflates, setInflates] = useState(true)
   const sellable = assets.filter((a) => a.value > 0)
 
   const valid =
@@ -716,11 +731,11 @@ function WhatIfs({
       const asset = sellable.find((a) => a.id === assetId)
       item = { id, kind, label: label.trim() || t('retirement.projection.sellLabel', { name: asset?.name ?? '' }), assetId, year: from, feesPercent: parseFloat(fees) || 0 }
     } else if (kind === 'spend') {
-      item = { id, kind, label: label.trim() || t('retirement.projection.kind_spend'), monthly: Math.abs(parseFloat(amount)), fromYear: from }
+      item = { id, kind, label: label.trim() || t('retirement.projection.kind_spend'), monthly: Math.abs(parseFloat(amount)), fromYear: from, inflates }
     } else if (kind === 'oneoff') {
       item = { id, kind, label: label.trim() || t('retirement.projection.oneoffLabel'), amount: parseFloat(amount), year: from }
     } else {
-      item = { id, kind, label: label.trim() || t(`retirement.projection.kind_${kind}`), monthly: Math.abs(parseFloat(amount)), fromYear: from, toYear: toYear ? parseInt(toYear, 10) : undefined }
+      item = { id, kind, label: label.trim() || t(`retirement.projection.kind_${kind}`), monthly: Math.abs(parseFloat(amount)), fromYear: from, toYear: toYear ? parseInt(toYear, 10) : undefined, inflates }
     }
     onChange([...whatIfs, item])
     setLabel('')
@@ -729,9 +744,9 @@ function WhatIfs({
 
   const describe = (w: WhatIf) => {
     if (w.kind === 'sell') return t('retirement.projection.describeSell', { year: thisYear + w.year, fees: w.feesPercent })
-    if (w.kind === 'spend') return t('retirement.projection.describeSpend', { amount: w.monthly, from: thisYear + w.fromYear })
+    if (w.kind === 'spend') return t('retirement.projection.describeSpend', { amount: w.monthly, from: thisYear + w.fromYear }) + (w.inflates === false ? ` · ${t('retirement.projection.staysTheSame')}` : '')
     if (w.kind === 'oneoff') return t('retirement.projection.describeOneoff', { amount: w.amount, year: thisYear + w.year })
-    return t('retirement.projection.describeMonthly', { amount: w.monthly, from: thisYear + w.fromYear, to: w.toYear !== undefined ? thisYear + w.toYear : t('retirement.projection.onwards') })
+    return t('retirement.projection.describeMonthly', { amount: w.monthly, from: thisYear + w.fromYear, to: w.toYear !== undefined ? thisYear + w.toYear : t('retirement.projection.onwards') }) + (w.inflates === false ? ` · ${t('retirement.projection.staysTheSame')}` : '')
   }
 
   const field = 'h-8'
@@ -755,8 +770,8 @@ function WhatIfs({
       )}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 items-end">
         <div className="space-y-1.5 col-span-2 lg:col-span-1">
-          <Label className="text-xs">{t('retirement.projection.whatKind')}</Label>
-          <select className={cn('w-full border border-border rounded-md px-2 text-sm bg-card', field)} value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
+          <Label htmlFor={`${uid}-kind`} className="text-xs">{t('retirement.projection.whatKind')}</Label>
+          <select id={`${uid}-kind`} className={cn('w-full border border-border rounded-md px-2 text-sm bg-card', field)} value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
             <option value="expense">{t('retirement.projection.kind_expense')}</option>
             <option value="spend">{t('retirement.projection.kind_spend')}</option>
             <option value="income">{t('retirement.projection.kind_income')}</option>
@@ -767,43 +782,55 @@ function WhatIfs({
         {kind === 'sell' ? (
           <>
             <div className="space-y-1.5 col-span-2 lg:col-span-2">
-              <Label className="text-xs">{t('retirement.projection.asset')}</Label>
-              <select className={cn('w-full border border-border rounded-md px-2 text-sm bg-card', field)} value={assetId} onChange={(e) => setAssetId(e.target.value)}>
+              <Label htmlFor={`${uid}-asset`} className="text-xs">{t('retirement.projection.asset')}</Label>
+              <select id={`${uid}-asset`} className={cn('w-full border border-border rounded-md px-2 text-sm bg-card', field)} value={assetId} onChange={(e) => setAssetId(e.target.value)}>
                 <option value="">{t('retirement.projection.chooseAsset')}</option>
                 {sellable.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">{t('retirement.projection.fees')}</Label>
-              <Input type="number" min="0" max="100" step="any" value={fees} onChange={(e) => setFees(e.target.value)} className={field} />
+              <Label htmlFor={`${uid}-fees`} className="text-xs">{t('retirement.projection.fees')}</Label>
+              <Input id={`${uid}-fees`} type="number" min="0" max="100" step="any" value={fees} onChange={(e) => setFees(e.target.value)} className={field} />
             </div>
           </>
         ) : (
           <>
             <div className="space-y-1.5">
-              <Label className="text-xs">{t('retirement.projection.label')}</Label>
-              <Input value={label} onChange={(e) => setLabel(e.target.value)} className={field} />
+              <Label htmlFor={`${uid}-label`} className="text-xs">{t('retirement.projection.label')}</Label>
+              <Input id={`${uid}-label`} value={label} onChange={(e) => setLabel(e.target.value)} className={field} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">{kind === 'oneoff' ? t('retirement.projection.amountSigned') : t('retirement.projection.amountMonthly')}</Label>
-              <Input type="number" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
+              <Label htmlFor={`${uid}-amount`} className="text-xs">{kind === 'oneoff' ? t('retirement.projection.amountSigned') : t('retirement.projection.amountMonthly')}</Label>
+              <Input id={`${uid}-amount`} type="number" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
             </div>
           </>
         )}
         <div className="space-y-1.5">
-          <Label className="text-xs">{kind === 'expense' || kind === 'income' || kind === 'spend' ? t('retirement.projection.fromYear') : t('retirement.projection.inYear')}</Label>
-          <Input type="number" min="0" max={horizon} value={fromYear} onChange={(e) => setFromYear(e.target.value)} className={field} />
+          <Label htmlFor={`${uid}-from`} className="text-xs">{kind === 'expense' || kind === 'income' || kind === 'spend' ? t('retirement.projection.fromYear') : t('retirement.projection.inYear')}</Label>
+          <Input id={`${uid}-from`} type="number" min="0" max={horizon} value={fromYear} onChange={(e) => setFromYear(e.target.value)} className={field} />
         </div>
         {(kind === 'expense' || kind === 'income') && (
           <div className="space-y-1.5">
-            <Label className="text-xs">{t('retirement.projection.toYear')}</Label>
-            <Input type="number" min="0" max={horizon} value={toYear} onChange={(e) => setToYear(e.target.value)} className={field} placeholder="∞" />
+            <Label htmlFor={`${uid}-to`} className="text-xs">{t('retirement.projection.toYear')}</Label>
+            <Input id={`${uid}-to`} type="number" min="0" max={horizon} value={toYear} onChange={(e) => setToYear(e.target.value)} className={field} placeholder="∞" />
           </div>
         )}
         <Button type="button" size="sm" onClick={add} disabled={!valid} className="h-8">
           <Plus size={14} /> {t('retirement.projection.add')}
         </Button>
       </div>
+      {(kind === 'expense' || kind === 'income' || kind === 'spend') && (
+        <label className={cn('flex items-center gap-2 text-xs mt-3', kind === 'income' && !incomeIndexed ? 'text-muted-foreground/60 cursor-not-allowed' : 'text-muted-foreground cursor-pointer')}>
+          <input
+            type="checkbox"
+            checked={inflates && !(kind === 'income' && !incomeIndexed)}
+            disabled={kind === 'income' && !incomeIndexed}
+            onChange={(e) => setInflates(e.target.checked)}
+            className="size-4 accent-primary"
+          />
+          {t('retirement.projection.risesWithInflation')}
+        </label>
+      )}
       <p className="text-[11px] text-muted-foreground mt-2">{t('retirement.projection.yearsHint')}</p>
     </div>
   )

@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react'
 import { expect, it } from 'vitest'
-import { YearTooltip } from '@/components/retirement-projection-charts'
+import { AssetsTable, YearTooltip } from '@/components/retirement-projection-charts'
 import { projectRetirement } from '@/lib/retirement-projection'
 import { renderWithProviders } from '@/test/utils'
 
@@ -47,4 +47,30 @@ it('flags a year the assets could not pay for', () => {
   })
   renderWithProviders(<YearTooltip row={p.rows[0]} year={2027} names={{ a: 'Little' }} drawableIds={new Set(['a'])} money={(v) => `€${Math.round(v)}`} />)
   expect(screen.getByText('Could not be paid')).toBeInTheDocument()
+})
+
+it('shows a row per year and a column per asset, with the pool total and the flows', () => {
+  const p = projectRetirement({
+    recurringIncomeMonthly: 0,
+    outgoingMonthly: 1_000,
+    assets: [
+      { id: 'etf', name: 'ETF', value: 100_000, drawable: true },
+      { id: 'btc', name: 'Bitcoin', value: 50_000, drawable: true },
+      { id: 'house', name: 'House', value: 300_000, drawable: false },
+    ],
+    assumptions: { horizonYears: 3, inflationPercent: 0, incomeIndexed: true },
+    whatIfs: [],
+  })
+  renderWithProviders(
+    <AssetsTable scenario={p} names={{ etf: 'ETF', btc: 'Bitcoin', house: 'House' }} drawableIds={new Set(['etf', 'btc'])} thisYear={2027} money={(v) => `€${Math.round(v)}`} />,
+  )
+  for (const header of ['ETF', 'Bitcoin', 'House', 'Total', 'Income', 'Outgoing', 'Sold', 'Net worth']) {
+    expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument()
+  }
+  expect(screen.getAllByRole('row')).toHaveLength(2 + 3) // two header rows and one per year
+  expect(screen.getByRole('rowheader', { name: /2027/ })).toBeInTheDocument()
+  expect(screen.getByRole('rowheader', { name: /2029/ })).toBeInTheDocument()
+  // Year 0: 12k drawn pro rata from 150k, so 138k left in the pool and 300k elsewhere.
+  expect(screen.getAllByText('€138000').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('€300000').length).toBeGreaterThan(0)
 })

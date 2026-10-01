@@ -10,7 +10,7 @@ const BASELINE_COLOR = '#94A3B8'
 const SCENARIO_COLOR = '#6366F1'
 const MAX_BANDS = 8
 
-export type ChartMode = 'total' | 'assets'
+export type ChartMode = 'total' | 'assets' | 'table'
 
 interface Props {
   scenario: Projection
@@ -190,6 +190,75 @@ export function YearTooltip({
         )}
         {row.unfunded > 0.5 && <div className={cn(line, 'text-rose-500 font-medium')}><span>{t('retirement.projection.tooltipUnfunded')}</span><span className="tabular-nums">{money(row.unfunded)}</span></div>}
       </div>
+    </div>
+  )
+}
+
+/** Every year as a row and every asset as a column, so any value can be read off. */
+export function AssetsTable({
+  scenario,
+  names,
+  drawableIds,
+  thisYear,
+  money,
+}: {
+  scenario: Projection
+  names: Record<string, string>
+  drawableIds: ReadonlySet<string>
+  thisYear: number
+  money: (v: number) => string
+}) {
+  const { t } = useTranslation()
+  const peak: Record<string, number> = {}
+  for (const row of scenario.rows) for (const [id, v] of Object.entries(row.byAsset)) peak[id] = Math.max(peak[id] ?? 0, v)
+  const bySize = (a: string, b: string) => (peak[b] ?? 0) - (peak[a] ?? 0)
+  const ids = Object.keys(peak)
+  const sellFrom = ids.filter((id) => drawableIds.has(id)).sort(bySize)
+  const others = ids.filter((id) => !drawableIds.has(id)).sort(bySize)
+  const name = (id: string) => (id === CASH_ID ? t('retirement.projection.cash') : names[id] ?? id)
+
+  const head = 'px-2.5 py-2 text-right font-medium text-muted-foreground whitespace-nowrap bg-card'
+  const cell = 'px-2.5 py-1.5 text-right tabular-nums whitespace-nowrap'
+  const sticky = 'sticky left-0 bg-card text-left z-10'
+  const sold = (row: YearRow) => Object.values(row.drawn).reduce((sum, v) => sum + v, 0)
+  return (
+    <div className="max-h-[28rem] overflow-auto rounded-lg border border-border">
+      <table className="w-full text-xs border-collapse">
+        <thead className="sticky top-0 z-20">
+          <tr className="border-b border-border">
+            <th className={cn(head, sticky, 'text-left')} rowSpan={2}>{t('retirement.projection.tableYear')}</th>
+            {sellFrom.length > 0 && <th className={cn(head, 'text-center border-l border-border')} colSpan={sellFrom.length + 1}>{t('retirement.projection.tableSellFrom')}</th>}
+            {others.length > 0 && <th className={cn(head, 'text-center border-l border-border')} colSpan={others.length}>{t('retirement.projection.tableOthers')}</th>}
+            <th className={cn(head, 'text-center border-l border-border')} colSpan={4}>{t('retirement.projection.tableFlows')}</th>
+          </tr>
+          <tr className="border-b border-border">
+            {sellFrom.map((id, i) => <th key={id} className={cn(head, i === 0 && 'border-l border-border')}>{name(id)}</th>)}
+            {sellFrom.length > 0 && <th className={cn(head, 'text-foreground')}>{t('retirement.projection.tableTotal')}</th>}
+            {others.map((id, i) => <th key={id} className={cn(head, i === 0 && 'border-l border-border')}>{name(id)}</th>)}
+            <th className={cn(head, 'border-l border-border')}>{t('retirement.projection.income')}</th>
+            <th className={head}>{t('retirement.projection.outgoing')}</th>
+            <th className={head}>{t('retirement.projection.tableSold')}</th>
+            <th className={head}>{t('retirement.projection.tableNetWorth')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {scenario.rows.map((row) => (
+            <tr key={row.year} className={cn('border-b border-border last:border-0', row.phase !== 'drawdown' && 'text-muted-foreground')}>
+              <th scope="row" className={cn(cell, sticky, 'font-medium')}>
+                {thisYear + row.year}
+                <span className="ml-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">{t(`retirement.projection.phase_${row.phase}`)}</span>
+              </th>
+              {sellFrom.map((id, i) => <td key={id} className={cn(cell, i === 0 && 'border-l border-border')}>{row.byAsset[id] ? money(row.byAsset[id]) : '–'}</td>)}
+              {sellFrom.length > 0 && <td className={cn(cell, 'font-medium text-foreground')}>{money(row.drawable)}</td>}
+              {others.map((id, i) => <td key={id} className={cn(cell, i === 0 && 'border-l border-border')}>{row.byAsset[id] ? money(row.byAsset[id]) : '–'}</td>)}
+              <td className={cn(cell, 'border-l border-border text-emerald-600')}>{money(row.income)}</td>
+              <td className={cn(cell, 'text-rose-500')}>{money(row.outgoing)}</td>
+              <td className={cell}>{sold(row) > 0.5 ? money(sold(row)) : '–'}</td>
+              <td className={cell}>{money(row.netWorth)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
