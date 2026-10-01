@@ -1,8 +1,7 @@
 # helpers/
 
-Reusable logic carried over from `securo-helper` (a standalone drag-and-drop
-import tool built against the original, unforked Securo) and from manual
-bug-hunting against real data. Everything here is framework-agnostic — no
+Reusable logic carried over from a standalone import tool built against the
+original, unforked Securo, and from manual bug-hunting against real data. Everything here is framework-agnostic — no
 FastAPI, no routes, no UI — meant to be imported/wired into whatever this
 fork's backend ends up looking like.
 
@@ -56,22 +55,4 @@ in this fork becomes — not a finished feature on its own.
 
 ## What's deliberately *not* here
 
-`securo-helper` (still at `~/Projects/securo-helper/`, standalone) also has
-a FastAPI server (upload/download/session endpoints, a zip-everything
-endpoint) and a plain HTML/JS drag-and-drop frontend. None of that is
-copied here — it only existed because `securo-helper` ran as an independent
-tool against an unmodified Securo install. Once this logic is hardwired
-into this fork's own backend/frontend, those serve no purpose here; copying
-them over would just be dead scaffolding shaped for a different app.
-
-If useful for reference anyway: `~/Projects/securo-helper/app/main.py` (the
-FastAPI routes) and `~/Projects/securo-helper/web/` (the frontend).
-
-## Background
-
-`~/Projects/securo-helper/SECURO_HANDOFF.md` (if still present) has the
-original bug-hunting notes this was built from — worth a skim before
-touching the converters, since most of what's tricky in them is there for a
-specific, previously-hit reason (silent 0-row imports, CRLF, UTF-16
-decode-order, the Belfius prefix-match bug) rather than defensive
-overengineering.
+The standalone import tool these converters came from had its own web server (upload, download and session endpoints) and a drag-and-drop frontend. None of that is copied here: it only existed because that tool ran separately from Securo. The converters now run inside this app's own import, so that scaffolding would be dead code.
