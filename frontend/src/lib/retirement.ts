@@ -1,20 +1,32 @@
-import type { RecurringTransaction } from '@/types'
+import type { Asset, RecurringTransaction } from '@/types'
 import { PER_YEAR, inDisplayCurrency } from './recurring-totals'
 
-export interface RetirementLine {
+export type IncomeKind = 'recurring' | 'asset-income' | 'asset-sale'
+
+export interface IncomeLine {
+  /** Stable key, also what the user's deselections are stored under. */
+  id: string
+  kind: IncomeKind
+  label: string
+  /** What the line amounts to in a month, in the display currency. */
+  monthly: number
+  frequency?: string
+  asset?: Asset
+}
+
+export interface OutgoingLine {
   item: RecurringTransaction
-  /** What the item amounts to in a month, in the display currency. */
   monthly: number
 }
 
 export interface RetirementSummary {
-  /** Every active credit, whether or not it is counted. */
-  income: RetirementLine[]
-  /** Every active debit. All of them count. */
-  outgoing: RetirementLine[]
+  /** Every income line, whether or not it is counted. */
+  income: IncomeLine[]
+  /** Every active recurring debit. All of them count. */
+  outgoing: OutgoingLine[]
   incomeMonthly: number
   outgoingMonthly: number
-  /** Share of the outgoings the counted income covers, 0..n (1 = fully covered). */
+  /** Share of the outgoings the counted income covers (1 = fully covered). */
   coverage: number | null
   /** Counted income minus outgoings, per month. Negative = shortfall. */
   surplusMonthly: number
@@ -30,19 +42,60 @@ export function monthlyEquivalent(rt: RecurringTransaction, displayCurrency: str
   return (amount * perYear) / 12
 }
 
+/** The asset's value in the display currency, or null if unknown. */
+export function assetValue(asset: Asset, displayCurrency: string): number | null {
+  if (asset.current_value_primary != null) return asset.current_value_primary
+  if (asset.current_value != null && asset.currency === displayCurrency) return asset.current_value
+  return null
+}
+
+/** Display-currency per asset-currency unit, from the asset's own value pair. */
+function conversionRate(asset: Asset, displayCurrency: string): number | null {
+  if (asset.currency === displayCurrency) return 1
+  if (asset.current_value && asset.current_value_primary != null) {
+    return asset.current_value_primary / asset.current_value
+  }
+  return null
+}
+
+function assetIncomeLines(asset: Asset, displayCurrency: string): { lines: IncomeLine[]; skipped: number } {
+  const lines: IncomeLine[] = []
+  let skipped = 0
+  const value = assetValue(asset, displayCurrency)
+
+  if (asset.income_mode === 'yield' && asset.income_rate != null) {
+    if (value == null) skipped += 1
+    else lines.push({ id: `asset:${asset.id}:income`, kind: 'asset-income', label: asset.name, monthly: (value * asset.income_rate) / 100 / 12, asset })
+  } else if (asset.income_mode === 'fixed' && asset.income_amount != null && asset.income_frequency) {
+    const rate = conversionRate(asset, displayCurrency)
+    const perYear = PER_YEAR[asset.income_frequency]
+    if (rate == null || perYear == null) skipped += 1
+    else lines.push({ id: `asset:${asset.id}:income`, kind: 'asset-income', label: asset.name, monthly: (asset.income_amount * rate * perYear) / 12, frequency: asset.income_frequency, asset })
+  }
+
+  if (asset.sell_percent_per_year) {
+    if (value == null) skipped += 1
+    else lines.push({ id: `asset:${asset.id}:sale`, kind: 'asset-sale', label: asset.name, monthly: (value * asset.sell_percent_per_year) / 100 / 12, asset })
+  }
+  return { lines, skipped }
+}
+
 /**
- * Passive income against outgoings, from the recurring items.
- * All active credits are income unless their id is in `excludedIncomeIds`;
- * all active debits are outgoings.
+ * Passive income against outgoings. Income is every active recurring credit,
+ * plus the modelled income and planned sales of every live asset, grouped or
+ * not; any of it can be left out by id. Outgoings are every active recurring
+ * debit.
  */
 export function computeRetirement(
   items: RecurringTransaction[],
+  assets: Asset[],
   displayCurrency: string,
   excludedIncomeIds: ReadonlySet<string>,
 ): RetirementSummary {
-  const income: RetirementLine[] = []
-  const outgoing: RetirementLine[] = []
+  const income: IncomeLine[] = []
+  const outgoing: OutgoingLine[] = []
   let skipped = 0
+
   for (const item of items) {
     if (!item.is_active) continue
     const monthly = monthlyEquivalent(item, displayCurrency)
@@ -50,14 +103,24 @@ export function computeRetirement(
       skipped += 1
       continue
     }
-    ;(item.type === 'credit' ? income : outgoing).push({ item, monthly })
+    if (item.type === 'credit') {
+      income.push({ id: item.id, kind: 'recurring', label: item.description, monthly, frequency: item.frequency })
+    } else {
+      outgoing.push({ item, monthly })
+    }
   }
+
+  for (const asset of assets) {
+    if (asset.is_archived || asset.sell_date) continue
+    const result = assetIncomeLines(asset, displayCurrency)
+    income.push(...result.lines)
+    skipped += result.skipped
+  }
+
   income.sort((a, b) => b.monthly - a.monthly)
   outgoing.sort((a, b) => b.monthly - a.monthly)
 
-  const incomeMonthly = income
-    .filter((l) => !excludedIncomeIds.has(l.item.id))
-    .reduce((sum, l) => sum + l.monthly, 0)
+  const incomeMonthly = income.filter((l) => !excludedIncomeIds.has(l.id)).reduce((sum, l) => sum + l.monthly, 0)
   const outgoingMonthly = outgoing.reduce((sum, l) => sum + l.monthly, 0)
   return {
     income,

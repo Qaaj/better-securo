@@ -168,6 +168,7 @@ function assetTypeFromQuoteType(quoteType: string | null | undefined): string {
 const VALUATION_METHODS = ['manual', 'growth_rule', 'market_price'] as const
 const GROWTH_TYPES = ['percentage', 'absolute'] as const
 const GROWTH_FREQUENCIES = ['daily', 'weekly', 'monthly', 'yearly'] as const
+const INCOME_FREQUENCIES = ['monthly', 'quarterly', 'semiannual', 'yearly'] as const
 
 // Column template shared by the holdings table header + rows so they align:
 // Ativo · Quant. · Preço Médio · Preço Atual · Rentab. · Saldo · % · actions.
@@ -242,6 +243,11 @@ export default function AssetsPage() {
   const [formGrowthRate, setFormGrowthRate] = useState('')
   const [formGrowthFrequency, setFormGrowthFrequency] = useState<string>('monthly')
   const [formGrowthStartDate, setFormGrowthStartDate] = useState<string>('')
+  const [formIncomeMode, setFormIncomeMode] = useState<'' | 'yield' | 'fixed'>('')
+  const [formIncomeRate, setFormIncomeRate] = useState('')
+  const [formIncomeAmount, setFormIncomeAmount] = useState('')
+  const [formIncomeFrequency, setFormIncomeFrequency] = useState<(typeof INCOME_FREQUENCIES)[number]>('monthly')
+  const [formSellPercent, setFormSellPercent] = useState('')
   // Market-price form state
   const [formTickerQuery, setFormTickerQuery] = useState('')
   const [tickerMatches, setTickerMatches] = useState<MarketSymbolMatch[]>([])
@@ -583,6 +589,11 @@ export default function AssetsPage() {
     setFormGrowthRate('')
     setFormGrowthFrequency('monthly')
     setFormGrowthStartDate('')
+    setFormIncomeMode('')
+    setFormIncomeRate('')
+    setFormIncomeAmount('')
+    setFormIncomeFrequency('monthly')
+    setFormSellPercent('')
     resetMarketPriceForm()
     setDialogOpen(true)
   }
@@ -603,6 +614,11 @@ export default function AssetsPage() {
     setFormGrowthRate(asset.growth_rate?.toString() ?? '')
     setFormGrowthFrequency(asset.growth_frequency ?? 'monthly')
     setFormGrowthStartDate(asset.growth_start_date ?? '')
+    setFormIncomeMode(asset.income_mode ?? '')
+    setFormIncomeRate(asset.income_rate?.toString() ?? '')
+    setFormIncomeAmount(asset.income_amount?.toString() ?? '')
+    setFormIncomeFrequency(asset.income_frequency ?? 'monthly')
+    setFormSellPercent(asset.sell_percent_per_year?.toString() ?? '')
     resetMarketPriceForm()
     if (asset.valuation_method === 'market_price' && asset.ticker) {
       setFormTickerQuery(asset.ticker)
@@ -638,6 +654,13 @@ export default function AssetsPage() {
       currency: formCurrency,
       group_id: formGroupId || null,
       valuation_method: formMethod,
+      // Modelled income for the retirement forecast. Always sent so that
+      // switching it off clears the fields.
+      income_mode: formIncomeMode || null,
+      income_rate: formIncomeMode === 'yield' && formIncomeRate ? parseFloat(formIncomeRate) : null,
+      income_amount: formIncomeMode === 'fixed' && formIncomeAmount ? parseFloat(formIncomeAmount) : null,
+      income_frequency: formIncomeMode ? formIncomeFrequency : null,
+      sell_percent_per_year: formSellPercent ? parseFloat(formSellPercent) : null,
     }
 
     // A ledger-backed holding derives its buy date, quantity and cost basis
@@ -1482,6 +1505,61 @@ export default function AssetsPage() {
               </div>
             )}
 
+            {/* Income for the retirement forecast. Modelled only: it never
+                creates transactions, so a rental's rent can live here instead
+                of as a recurring item. */}
+            <div className="space-y-3 p-3.5 rounded-xl border border-border bg-muted/30">
+              <div className="space-y-2">
+                <Label>{t('assets.incomeMode')}</Label>
+                <select
+                  className="bg-card border border-border focus:outline-none focus:ring-2 focus:ring-primary px-3 py-2 rounded-lg text-foreground text-sm w-full"
+                  value={formIncomeMode}
+                  onChange={e => setFormIncomeMode(e.target.value as '' | 'yield' | 'fixed')}
+                >
+                  <option value="">{t('assets.incomeNone')}</option>
+                  <option value="yield">{t('assets.incomeYield')}</option>
+                  <option value="fixed">{t('assets.incomeFixed')}</option>
+                </select>
+              </div>
+              {formIncomeMode === 'yield' && (
+                <div className="space-y-2">
+                  <Label>{t('assets.incomeRate')}</Label>
+                  <div className="relative">
+                    <Input type="number" step="any" min="0" max="100" value={formIncomeRate} onChange={e => setFormIncomeRate(e.target.value)} className="pr-8" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">%</span>
+                  </div>
+                </div>
+              )}
+              {formIncomeMode === 'fixed' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>{t('assets.incomeAmount', { currency: formCurrency })}</Label>
+                    <Input type="number" step="0.01" min="0" value={formIncomeAmount} onChange={e => setFormIncomeAmount(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t('assets.incomeFrequency')}</Label>
+                    <select
+                      className="bg-card border border-border focus:outline-none focus:ring-2 focus:ring-primary px-3 py-2 rounded-lg text-foreground text-sm w-full"
+                      value={formIncomeFrequency}
+                      onChange={e => setFormIncomeFrequency(e.target.value as (typeof INCOME_FREQUENCIES)[number])}
+                    >
+                      {INCOME_FREQUENCIES.map(f => (
+                        <option key={f} value={f}>{t(`recurring.${f}`)}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label>{t('assets.sellPercent')}</Label>
+                <div className="relative">
+                  <Input type="number" step="any" min="0" max="100" value={formSellPercent} onChange={e => setFormSellPercent(e.target.value)} className="pr-8" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">%</span>
+                </div>
+                <p className="text-xs text-muted-foreground">{t('assets.sellPercentHint')}</p>
+              </div>
+            </div>
+
             {/* Current Value — manual only */}
             {!editingAsset && formMethod === 'manual' && (
               <div className="space-y-2">
@@ -1525,6 +1603,8 @@ export default function AssetsPage() {
               onClick={handleSave}
               disabled={
                 !formName
+                || (formIncomeMode === 'yield' && !formIncomeRate)
+                || (formIncomeMode === 'fixed' && !formIncomeAmount)
                 || createMutation.isPending
                 || updateMutation.isPending
                 // Market-price guard: must have a resolved ticker + quantity.

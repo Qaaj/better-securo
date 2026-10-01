@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { recurring as recurringApi } from '@/lib/api'
-import { computeRetirement, type RetirementLine } from '@/lib/retirement'
+import { assets as assetsApi, recurring as recurringApi } from '@/lib/api'
+import { computeRetirement, type IncomeKind, type IncomeLine } from '@/lib/retirement'
 import { formatCurrency } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/auth-context'
@@ -44,7 +44,20 @@ export default function RetirementPage() {
     queryFn: recurringApi.list,
   })
 
-  const summary = useMemo(() => computeRetirement(items ?? [], currency, excluded), [items, currency, excluded])
+  const { data: assetList } = useQuery({
+    queryKey: ['assets'],
+    queryFn: () => assetsApi.list(),
+  })
+
+  const summary = useMemo(
+    () => computeRetirement(items ?? [], assetList ?? [], currency, excluded),
+    [items, assetList, currency, excluded],
+  )
+  const sections: { kind: IncomeKind; title: string }[] = [
+    { kind: 'recurring', title: t('retirement.incomeRecurringTitle') },
+    { kind: 'asset-income', title: t('retirement.incomeAssetsTitle') },
+    { kind: 'asset-sale', title: t('retirement.incomeSalesTitle') },
+  ]
 
   const toggle = (id: string) => {
     setExcluded((prev) => {
@@ -92,11 +105,20 @@ export default function RetirementPage() {
               <Link to="/recurring" className="text-primary hover:underline">{t('retirement.goToRecurring')}</Link>
             </p>
           ) : (
-            <ul className="divide-y divide-border">
-              {summary.income.map((line) => (
-                <IncomeRow key={line.item.id} line={line} counted={!excluded.has(line.item.id)} onToggle={() => toggle(line.item.id)} money={money} />
-              ))}
-            </ul>
+            sections.map(({ kind, title }) => {
+              const lines = summary.income.filter((l) => l.kind === kind)
+              if (lines.length === 0) return null
+              return (
+                <div key={kind}>
+                  <p className="px-5 pt-3 pb-1 text-xs font-medium text-muted-foreground">{title}</p>
+                  <ul className="divide-y divide-border">
+                    {lines.map((line) => (
+                      <IncomeRow key={line.id} line={line} counted={!excluded.has(line.id)} onToggle={() => toggle(line.id)} money={money} />
+                    ))}
+                  </ul>
+                </div>
+              )
+            })
           )}
         </Card>
 
@@ -146,12 +168,19 @@ function IncomeRow({
   onToggle,
   money,
 }: {
-  line: RetirementLine
+  line: IncomeLine
   counted: boolean
   onToggle: () => void
   money: (value: number) => string
 }) {
   const { t } = useTranslation()
+  const detail = line.kind === 'recurring'
+    ? t(`recurring.${line.frequency}`)
+    : line.kind === 'asset-income' && line.asset?.income_mode === 'yield'
+      ? t('retirement.assetYield', { rate: line.asset.income_rate, value: money(line.asset.current_value_primary ?? line.asset.current_value ?? 0) })
+      : line.kind === 'asset-income'
+        ? t('retirement.assetFixed', { frequency: t(`recurring.${line.frequency}`) })
+        : t('retirement.assetSale', { percent: line.asset?.sell_percent_per_year, value: money(line.asset?.current_value_primary ?? line.asset?.current_value ?? 0) })
   return (
     <li className="px-5 py-2.5">
       <label className="flex items-center gap-3 text-sm cursor-pointer">
@@ -160,11 +189,11 @@ function IncomeRow({
           checked={counted}
           onChange={onToggle}
           className="size-4 accent-primary shrink-0"
-          aria-label={t('retirement.countThis', { name: line.item.description })}
+          aria-label={t('retirement.countThis', { name: line.label })}
         />
         <span className={cn('min-w-0 flex-1', !counted && 'text-muted-foreground line-through')}>
-          <span className="block truncate">{line.item.description}</span>
-          <span className="block text-xs text-muted-foreground no-underline">{t(`recurring.${line.item.frequency}`)}</span>
+          <span className="block truncate">{line.label}</span>
+          <span className="block text-xs text-muted-foreground no-underline">{detail}</span>
         </span>
         <span className={cn('shrink-0 tabular-nums', !counted && 'text-muted-foreground')}>{money(line.monthly)}</span>
       </label>
