@@ -58,6 +58,25 @@ function conversionRate(asset: Asset, displayCurrency: string): number | null {
   return null
 }
 
+/** The asset's own growth rule as a rate per year, or null when it has none. */
+export function annualGrowthPercent(asset: Asset, value: number | null): number | null {
+  if (!asset.growth_type || asset.growth_rate == null || !asset.growth_frequency) return null
+  const perYear = ({ daily: 365, weekly: 52, monthly: 12, yearly: 1 } as Record<string, number>)[asset.growth_frequency]
+  if (perYear == null) return null
+  if (asset.growth_type === 'percentage') return ((1 + asset.growth_rate / 100) ** perYear - 1) * 100
+  // A fixed amount per period, against what the asset is worth now.
+  return value ? ((asset.growth_rate * perYear) / value) * 100 : null
+}
+
+/** A fixed asset income (a rental) as a monthly amount in the display currency. */
+export function assetFixedMonthly(asset: Asset, displayCurrency: string): number | null {
+  if (asset.income_mode !== 'fixed' || asset.income_amount == null || !asset.income_frequency) return null
+  const rate = conversionRate(asset, displayCurrency)
+  const perYear = PER_YEAR[asset.income_frequency]
+  if (rate == null || perYear == null) return null
+  return (asset.income_amount * rate * perYear) / 12
+}
+
 function assetIncomeLines(asset: Asset, displayCurrency: string): { lines: IncomeLine[]; skipped: number } {
   const lines: IncomeLine[] = []
   let skipped = 0
