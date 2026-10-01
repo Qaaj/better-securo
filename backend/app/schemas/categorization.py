@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal, Optional
 
@@ -61,6 +61,28 @@ class SuggestionRead(BaseModel):
     rule_created: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SuggestionTransaction(BaseModel):
+    id: uuid.UUID
+    date: date
+    description: str
+    amount: Decimal
+    currency: str
+    amount_primary: Optional[Decimal] = None
+    type: str
+    account_name: Optional[str] = None
+    category_id: Optional[uuid.UUID] = None
+
+
+class SuggestionTransactions(BaseModel):
+    items: list[SuggestionTransaction]
+    total: int
+
+
+class RulesForAcceptedResult(BaseModel):
+    considered: int
+    created: int
 
 
 class SuggestionList(BaseModel):

@@ -586,6 +586,18 @@ export interface CategorizationSuggestion {
   rule_created?: boolean
 }
 
+export interface CategorizationSuggestionTransaction {
+  id: string
+  date: string
+  description: string
+  amount: string | number
+  currency: string
+  amount_primary: string | number | null
+  type: 'debit' | 'credit'
+  account_name: string | null
+  category_id: string | null
+}
+
 export interface RecurringSuggestion {
   match_basis: 'amount_and_name' | 'name' | 'none'
   frequency: RecurringTransaction['frequency'] | null

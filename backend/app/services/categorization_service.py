@@ -21,7 +21,7 @@ from decimal import Decimal
 from typing import Optional, Protocol
 
 import httpx
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.categorization import CategorizationJob, CategorizationSuggestion
@@ -395,6 +395,65 @@ def _examples(history: dict[str, Counter], by_id: dict) -> list[str]:
         if len(lines) >= EXAMPLE_COUNT:
             break
     return lines
+
+
+# ---------------------------------------------------------------------------
+# looking at a merchant's transactions
+# ---------------------------------------------------------------------------
+async def suggestion_transactions(
+    session: AsyncSession, workspace_id: uuid.UUID, suggestion: CategorizationSuggestion, limit: int = 200
+) -> tuple[list[tuple[Transaction, Optional[str]]], int]:
+    """The transactions behind a suggestion, newest first, with their account's
+    name. A pending suggestion shows the uncategorized ones it would change; an
+    accepted or skipped one shows every transaction of the merchant."""
+    from app.models.account import Account
+
+    first_word = suggestion.merchant_key.split(" ")[0]
+    query = (
+        select(Transaction, Account.name)
+        .join(Account, Account.id == Transaction.account_id, isouter=True)
+        .where(Transaction.workspace_id == workspace_id, Transaction.source != "opening_balance")
+        .order_by(Transaction.date.desc())
+    )
+    if first_word:
+        query = query.where(func.lower(Transaction.description).like(f"{first_word}%"))
+    if suggestion.status == "pending":
+        query = query.where(Transaction.category_id.is_(None))
+    rows = [
+        (tx, account)
+        for tx, account in (await session.execute(query)).all()
+        if merchant_key(tx.description) == suggestion.merchant_key
+    ]
+    return rows[:limit], len(rows)
+
+
+async def create_rules_for_accepted(
+    session: AsyncSession, workspace_id: uuid.UUID, user_id: uuid.UUID
+) -> tuple[int, int]:
+    """Make rules for merchants whose suggestions were accepted without one.
+    Returns (merchants considered, rules created). Merchants that already have
+    a rule, and names too generic for a safe rule, are skipped."""
+    accepted = (
+        await session.execute(
+            select(CategorizationSuggestion)
+            .where(
+                CategorizationSuggestion.workspace_id == workspace_id,
+                CategorizationSuggestion.status == "accepted",
+                CategorizationSuggestion.suggested_category_id.is_not(None),
+            )
+            .order_by(CategorizationSuggestion.tx_count.desc())
+        )
+    ).scalars().all()
+    latest: dict[str, CategorizationSuggestion] = {}
+    for suggestion in accepted:
+        latest.setdefault(suggestion.merchant_key, suggestion)
+    created = 0
+    for suggestion in latest.values():
+        if await create_rule_for_suggestion(
+            session, workspace_id, user_id, suggestion, suggestion.suggested_category_id
+        ):
+            created += 1
+    return len(latest), created
 
 
 # ---------------------------------------------------------------------------

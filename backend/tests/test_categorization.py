@@ -458,3 +458,61 @@ async def test_accept_without_the_flag_makes_no_rule_and_accept_all_counts_rules
     body = result.json()
     assert body["suggestions"] == 2 and body["rules_created"] == 2
     assert len((await session.execute(select(Rule))).scalars().all()) == 2
+
+
+# ------------------------------------------------------------------ inspecting + retroactive rules
+@pytest.mark.asyncio
+async def test_a_suggestions_transactions_are_listed_for_inspection(
+    client, auth_headers, session, test_user, test_workspace, setup
+):
+    _, transport, _ = setup
+    job = await _job(session, test_user, test_workspace)
+    await svc.run_job(
+        async_sessionmaker(session.bind, expire_on_commit=False), job.id,
+        FakeClassifier({"stib mivb": (transport.name, "high")}),
+    )
+    stib = (await session.execute(
+        select(CategorizationSuggestion).where(CategorizationSuggestion.merchant_key == "stib mivb")
+    )).scalar_one()
+    listed = (await client.get(f"/api/categorization/suggestions/{stib.id}/transactions", headers=auth_headers)).json()
+    assert listed["total"] == 2
+    assert {t["description"] for t in listed["items"]} == {"STIB MIVB 0", "STIB MIVB 1"}
+    assert all(t["type"] == "debit" and t["account_name"] for t in listed["items"])
+
+    # Albert Heijn already has two categorized rows; a pending suggestion shows only the uncategorized three.
+    ah = (await session.execute(
+        select(CategorizationSuggestion).where(CategorizationSuggestion.merchant_key == "albert heijn")
+    )).scalar_one()
+    assert (await client.get(f"/api/categorization/suggestions/{ah.id}/transactions", headers=auth_headers)).json()["total"] == 3
+
+    missing = await client.get(
+        "/api/categorization/suggestions/00000000-0000-0000-0000-000000000000/transactions", headers=auth_headers
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_rules_can_be_made_afterwards_for_merchants_accepted_without_one(
+    client, auth_headers, session, test_user, test_workspace, setup
+):
+    _, transport, _ = setup
+    job = await _job(session, test_user, test_workspace)
+    await svc.run_job(
+        async_sessionmaker(session.bind, expire_on_commit=False), job.id,
+        FakeClassifier({"stib mivb": (transport.name, "high")}),
+    )
+    # Accepted earlier, no rule asked for.
+    accept_all = await client.post(
+        f"/api/categorization/jobs/{job.id}/accept-all", json={"min_confidence": "low"}, headers=auth_headers
+    )
+    assert accept_all.json()["rules_created"] == 0
+    assert (await session.execute(select(Rule))).scalars().all() == []
+
+    result = await client.post("/api/categorization/rules-for-accepted", headers=auth_headers)
+    assert result.json() == {"considered": 2, "created": 2}
+    rules = {r.name: r for r in (await session.execute(select(Rule))).scalars()}
+    assert set(rules) == {"Auto: albert heijn", "Auto: stib mivb"}
+
+    # Running it again changes nothing.
+    again = await client.post("/api/categorization/rules-for-accepted", headers=auth_headers)
+    assert again.json() == {"considered": 2, "created": 0}
