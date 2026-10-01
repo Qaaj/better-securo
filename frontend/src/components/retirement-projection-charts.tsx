@@ -48,8 +48,9 @@ export function AssetsChart(props: Props) {
   const { t } = useTranslation()
 
   // The biggest assets to sell from get a band each; the rest share one.
-  const first = scenario.rows[0]?.byAsset ?? {}
-  const ranked = [...drawableIds].filter((id) => (first[id] ?? 0) > 0).sort((a, b) => (first[b] ?? 0) - (first[a] ?? 0))
+  const peak: Record<string, number> = {}
+  for (const row of scenario.rows) for (const [id, v] of Object.entries(row.byAsset)) peak[id] = Math.max(peak[id] ?? 0, v)
+  const ranked = [...drawableIds].filter((id) => (peak[id] ?? 0) > 0).sort((a, b) => (peak[b] ?? 0) - (peak[a] ?? 0))
   const banded = ranked.slice(0, MAX_BANDS)
   const bandName = (id: string) => (id === CASH_ID ? t('retirement.projection.cash') : names[id] ?? id)
 

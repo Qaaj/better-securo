@@ -232,3 +232,36 @@ describe('fixed spending', () => {
     expect(p.rows[2].outgoing).toBeCloseTo(48_000)
   })
 })
+
+describe('assets that arrive later', () => {
+  it('are not part of today but join the pool from their year, then grow', () => {
+    const p = run({
+      assets: [pool(100_000), { id: 'later', name: 'inheritance', value: 50_000, drawable: true, startYear: 2, growthPercent: 10 }],
+      assumptions: { horizonYears: 4 },
+    })
+    expect(p.drawableNow).toBe(100_000)
+    expect(p.rows[1].drawable).toBeCloseTo(100_000)
+    expect(p.rows[1].byAsset.later).toBeUndefined()
+    expect(p.rows[2].byAsset.later).toBeCloseTo(55_000) // arrives, then grows 10% that year
+    expect(p.rows[3].byAsset.later).toBeCloseTo(60_500)
+  })
+
+  it('pay their yield only once they exist', () => {
+    const p = run({
+      assets: [{ id: 'b', name: 'bonds', value: 100_000, drawable: true, startYear: 1, yieldPercent: 5 }],
+      assumptions: { horizonYears: 3 },
+    })
+    expect(p.rows[0].assetIncome).toBe(0)
+    expect(p.rows[1].assetIncome).toBeCloseTo(5_000)
+  })
+
+  it('extend the runway from the year they arrive', () => {
+    const without = run({ assets: [pool(24_000)], outgoingMonthly: 1_000, assumptions: { horizonYears: 10 } })
+    const withLater = run({
+      assets: [pool(24_000), { id: 'l', name: 'later', value: 24_000, drawable: true, startYear: 1 }],
+      outgoingMonthly: 1_000, assumptions: { horizonYears: 10 },
+    })
+    expect(without.runwayYears).toBeCloseTo(2)
+    expect(withLater.runwayYears).toBeCloseTo(4)
+  })
+})

@@ -26,6 +26,8 @@ interface TempAsset {
   value: number
   growthPercent: number
   yieldPercent: number
+  /** The asset exists from this year (0 = now). Older saved plans have none. */
+  fromYear?: number
 }
 
 interface Plan {
@@ -142,6 +144,7 @@ export function RetirementProjection({
         yieldPercent: temp.yieldPercent || undefined,
         sellOrder: plan.sellOrder[temp.id],
         temporary: true,
+        startYear: temp.fromYear || undefined,
       })
     }
     return list
@@ -294,6 +297,7 @@ export function RetirementProjection({
             setPlan({ ...plan, sellOrder: next })
           }}
           currency={currency}
+          thisYear={thisYear}
           onAddTemp={(temp) => setPlan({ ...plan, tempAssets: [...(plan.tempAssets ?? []), temp] })}
           onChangeTemp={(id, value) => setPlan({ ...plan, tempAssets: (plan.tempAssets ?? []).map((a) => (a.id === id ? { ...a, value } : a)) })}
           onRemoveTemp={(id) => setPlan({ ...plan, tempAssets: (plan.tempAssets ?? []).filter((a) => a.id !== id) })}
@@ -432,6 +436,7 @@ function SpendFrom({
   ordered,
   onOrder,
   currency,
+  thisYear,
   onAddTemp,
   onChangeTemp,
   onRemoveTemp,
@@ -443,6 +448,7 @@ function SpendFrom({
   ordered: boolean
   onOrder: (id: string, value: number | null) => void
   currency: string
+  thisYear: number
   onAddTemp: (temp: TempAsset) => void
   onChangeTemp: (id: string, value: number) => void
   onRemoveTemp: (id: string) => void
@@ -453,6 +459,7 @@ function SpendFrom({
   const [tempValue, setTempValue] = useState('')
   const [tempGrowth, setTempGrowth] = useState('')
   const [tempYield, setTempYield] = useState('')
+  const [tempFrom, setTempFrom] = useState('0')
   const addTemp = () => {
     const value = parseFloat(tempValue)
     if (Number.isNaN(value) || value <= 0) return
@@ -462,11 +469,13 @@ function SpendFrom({
       value,
       growthPercent: parseFloat(tempGrowth) || 0,
       yieldPercent: parseFloat(tempYield) || 0,
+      fromYear: Math.max(0, parseInt(tempFrom, 10) || 0),
     })
     setTempName('')
     setTempValue('')
     setTempGrowth('')
     setTempYield('')
+    setTempFrom('0')
   }
   const owned = assets.filter((a) => a.value > 0).sort((a, b) => b.value - a.value)
   return (
@@ -485,7 +494,11 @@ function SpendFrom({
             />
             <span className={cn('min-w-0 flex-1 truncate', !asset.drawable && 'text-muted-foreground')}>
               {asset.name}
-              {asset.temporary && <span className="ml-1.5 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">{t('retirement.projection.tempBadge')}</span>}
+              {asset.temporary && (
+                <span className="ml-1.5 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+                  {asset.startYear ? t('retirement.projection.tempBadgeFrom', { year: thisYear + asset.startYear }) : t('retirement.projection.tempBadge')}
+                </span>
+              )}
             </span>
             {ordered && asset.drawable && (
               <Input
@@ -541,7 +554,7 @@ function SpendFrom({
       </ul>
       <div className="mt-3 rounded-lg border border-dashed border-border p-3">
         <p className="text-xs font-medium text-muted-foreground mb-2">{t('retirement.projection.addTemp')}</p>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 items-end">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 items-end">
           <div className="space-y-1.5 col-span-2 lg:col-span-1">
             <Label htmlFor={`${uid}-tn`} className="text-xs">{t('retirement.projection.label')}</Label>
             <Input id={`${uid}-tn`} value={tempName} onChange={(e) => setTempName(e.target.value)} placeholder={t('retirement.projection.tempPlaceholder')} className="h-8" />
@@ -557,6 +570,10 @@ function SpendFrom({
           <div className="space-y-1.5">
             <Label htmlFor={`${uid}-ty`} className="text-xs">{t('retirement.projection.tempYield')}</Label>
             <Input id={`${uid}-ty`} type="number" min="0" step="any" value={tempYield} onChange={(e) => setTempYield(e.target.value)} className="h-8" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-tf`} className="text-xs">{t('retirement.projection.tempFrom', { year: thisYear + (parseInt(tempFrom, 10) || 0) })}</Label>
+            <Input id={`${uid}-tf`} type="number" min="0" step="1" value={tempFrom} onChange={(e) => setTempFrom(e.target.value)} className="h-8" />
           </div>
           <Button type="button" size="sm" onClick={addTemp} disabled={!(parseFloat(tempValue) > 0)} className="h-8">
             <Plus size={14} /> {t('retirement.projection.addAsset')}

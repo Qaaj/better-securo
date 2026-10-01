@@ -78,3 +78,17 @@ it('adds a temporary asset to the list, counts it, and removes it again', async 
   expect(screen.queryByText('More bonds')).not.toBeInTheDocument()
   expect(runway()).toBe(before)
 })
+
+it('adds a temporary asset that only arrives from a later year', async () => {
+  const { user } = renderWithProviders(<RetirementProjection {...props} />)
+  await user.type(screen.getByPlaceholderText('e.g. more bonds'), 'Inheritance')
+  await user.type(screen.getByLabelText(/Amount \(EUR\)/), '300000')
+  const from = screen.getByLabelText(/Available from year/)
+  await user.clear(from)
+  await user.type(from, '4')
+  await user.click(screen.getByRole('button', { name: 'Add asset' }))
+
+  expect(screen.getByText(/temporary · from \d{4}/)).toBeInTheDocument()
+  const stored = JSON.parse(window.localStorage.getItem('retirement:plan') ?? '{}')
+  expect(stored.tempAssets[0]).toMatchObject({ name: 'Inheritance', value: 300000, fromYear: 4 })
+})

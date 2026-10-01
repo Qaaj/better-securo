@@ -32,6 +32,8 @@ export interface ProjectionAsset {
   sellOrder?: number
   /** A what-if asset that exists only in the plan (display only; the engine treats it like any other). */
   temporary?: boolean
+  /** The asset only exists from the start of this year (0 = now); its value arrives then. */
+  startYear?: number
 }
 
 export interface Assumptions {
@@ -114,7 +116,7 @@ export function projectRetirement(input: ProjectionInput): Projection {
 
   // Mutable working copy; surplus with nowhere to go collects in a cash bucket,
   // which is sold first when selling in order.
-  const state = input.assets.map((asset) => ({ ...asset, held: true }))
+  const state = input.assets.map((asset) => ({ ...asset, held: (asset.startYear ?? 0) <= 0 }))
   state.push({ id: CASH_ID, name: 'cash', value: 0, drawable: true, held: true, sellOrder: -1 })
   const liabilities = state.filter((s) => s.value < 0).reduce((sum, s) => sum + s.value, 0)
   const holdings = state.filter((s) => s.value >= 0)
@@ -130,6 +132,9 @@ export function projectRetirement(input: ProjectionInput): Projection {
   for (let year = 0; year < a.horizonYears; year++) {
     const inflate = (1 + inflation) ** year
     const incomeInflate = a.incomeIndexed ? inflate : 1
+
+    // Assets that only exist from a later year arrive at the start of that year.
+    for (const h of holdings) if (!h.held && h.startYear === year) h.held = true
 
     let income = input.recurringIncomeMonthly * 12 * incomeInflate
     let outgoingMonthly = input.outgoingMonthly
