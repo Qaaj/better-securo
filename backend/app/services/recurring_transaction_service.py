@@ -64,6 +64,20 @@ async def create_recurring_transaction(
     data: RecurringTransactionCreate,
 ) -> RecurringTransaction:
     await _verify_account_in_workspace(session, workspace_id, data.account_id)
+    source_tx: Optional[Transaction] = None
+    if data.source_transaction_id is not None:
+        source_tx = (
+            await session.execute(
+                select(Transaction).where(
+                    Transaction.id == data.source_transaction_id,
+                    Transaction.workspace_id == workspace_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if source_tx is None:
+            raise ValueError("Transaction not found")
+        if source_tx.recurring_transaction_id is not None:
+            raise ValueError("Transaction is already linked to a recurring item")
     next_occ = data.start_date
     if data.skip_first:
         next_occ = _advance_date(
@@ -89,6 +103,8 @@ async def create_recurring_transaction(
     )
     session.add(recurring)
     await session.flush()
+    if source_tx is not None:
+        source_tx.recurring_transaction_id = recurring.id
     await stamp_primary_amount(
         session, user_id, recurring,
         date_field="start_date",

@@ -27,7 +27,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { AlertTriangle, ChevronDown, ChevronLeft, Download, Eye, EyeClosed, Paperclip, Upload, X, FileText, Plus, Unlink, SlidersHorizontal, ListPlus, Check } from 'lucide-react'
+import { AlertTriangle, Repeat, ChevronDown, ChevronLeft, Download, Eye, EyeClosed, Paperclip, Upload, X, FileText, Plus, Unlink, SlidersHorizontal, ListPlus, Check } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +37,7 @@ import {
 import { CategorySelect } from '@/components/category-select'
 import { PayeeSelect } from '@/components/payee-select'
 import { RuleDialog, type RuleDialogInitialData } from '@/components/rule-dialog'
+import { MakeRecurringDialog } from '@/components/make-recurring-dialog'
 import { TransactionAttachments } from '@/components/transaction-attachments'
 import type { AttachmentPreview } from '@/components/transaction-attachments'
 import { buildInstallmentSeriesInput, hasNonStatusChange, isManualInstallmentSeriesRow } from '@/lib/installment-series'
@@ -513,6 +514,7 @@ function TransactionForm({
   const [togglingIgnore, setTogglingIgnore] = useState(false)
   const [recurringLinked, setRecurringLinked] = useState(seed?.recurring_transaction_id != null)
   const [unlinkingRecurring, setUnlinkingRecurring] = useState(false)
+  const [makeRecurringOpen, setMakeRecurringOpen] = useState(false)
   const [addToRuleOpen, setAddToRuleOpen] = useState(false)
   const [extendRuleTarget, setExtendRuleTarget] = useState<Rule | null>(null)
 
@@ -1330,6 +1332,18 @@ function TransactionForm({
               {isIgnored ? t('transactions.unignoreAction') : t('transactions.ignoreAction')}
             </Button>
           )}
+          {transaction && !recurringLinked && !transaction.transfer_pair_id && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setMakeRecurringOpen(true)}
+              disabled={loading}
+              className="gap-1.5 whitespace-nowrap text-xs sm:text-sm h-8 sm:h-9"
+            >
+              <Repeat size={14} />
+              {t('recurring.makeRecurring')}
+            </Button>
+          )}
           {transaction && onCreateRule && (
             <div className="inline-flex">
               <Button
@@ -1405,6 +1419,17 @@ function TransactionForm({
           )}
         </div>
       </DialogFooter>
+      {transaction && (
+        <MakeRecurringDialog
+          transaction={transaction}
+          open={makeRecurringOpen}
+          onClose={() => setMakeRecurringOpen(false)}
+          onCreated={() => {
+            setRecurringLinked(true)
+            onIgnoreChanged?.()
+          }}
+        />
+      )}
       {transaction && addToRuleOpen && (
         <AddTransactionToRuleDialog
           open={true}

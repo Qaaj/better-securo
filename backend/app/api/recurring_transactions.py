@@ -10,11 +10,12 @@ from app.core.workspace_context import (
     current_writable_workspace,
 )
 from app.schemas.recurring_transaction import (
+    RecurringSuggestionRead,
     RecurringTransactionCreate,
     RecurringTransactionRead,
     RecurringTransactionUpdate,
 )
-from app.services import recurring_transaction_service
+from app.services import recurring_suggestion_service, recurring_transaction_service
 
 router = APIRouter(prefix="/api/recurring-transactions", tags=["recurring-transactions"])
 
@@ -25,6 +26,22 @@ async def list_recurring_transactions(
     session: AsyncSession = Depends(get_async_session),
 ):
     return await recurring_transaction_service.get_recurring_transactions(session, ctx.workspace.id)
+
+
+@router.get("/suggestion/{transaction_id}", response_model=RecurringSuggestionRead)
+async def suggest_recurring_from_transaction(
+    transaction_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """What a transaction would look like as a recurring item: how often it
+    repeats, judged from the matching transactions in the workspace."""
+    suggestion = await recurring_suggestion_service.suggest_for_transaction(
+        session, ctx.workspace.id, transaction_id
+    )
+    if suggestion is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
+    return suggestion
 
 
 @router.post("", response_model=RecurringTransactionRead, status_code=status.HTTP_201_CREATED)

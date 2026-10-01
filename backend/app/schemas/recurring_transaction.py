@@ -24,6 +24,25 @@ class RecurringTransactionCreate(BaseModel):
     category_id: Optional[uuid.UUID] = None
     skip_first: bool = False  # Set true when first occurrence already created as a transaction
     auto_generate: bool = False  # Materialize occurrences; off by default: the item only forecasts until the real charge is matched
+    # The transaction this item was made from. It becomes the item's first
+    # occurrence: it is linked to it, and with `skip_first` the schedule starts
+    # after it.
+    source_transaction_id: Optional[uuid.UUID] = None
+
+
+class RecurringSuggestionRead(BaseModel):
+    match_basis: Literal["amount_and_name", "name", "none"]
+    frequency: Optional[RecurringFrequency] = None
+    confidence: Literal["high", "medium", "low", "none"]
+    occurrences: int
+    first_date: Optional[_Date] = None
+    last_date: Optional[_Date] = None
+    average_gap_days: Optional[int] = None
+    typical_amount: Optional[Decimal] = None
+    amount_varies: bool = False
+    day_of_month: Optional[int] = None
+    next_occurrence: Optional[_Date] = None
+    dates: list[_Date] = []
 
 
 class RecurringTransactionUpdate(BaseModel):
