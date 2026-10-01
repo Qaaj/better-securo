@@ -53,7 +53,7 @@ The compose file is a development setup: your `backend/` and `frontend/` folders
 - Auto-categorization rules engine, plus **LLM-assisted categorization** with a model running on your own machine
 - Recurring transactions that **forecast instead of cluttering the ledger**, and a one-click "Make recurring" on any transaction that works out the frequency for you
 - Asset management with valuation tracking, growth rules and **modelled income** (yields, rentals, planned sales)
-- A **Retirement** tab: passive income against outgoings, a year-by-year projection with runway, drawdown years, selling order, what-ifs, and export to Markdown or PDF
+- A **Retirement** tab: passive income against outgoings, a year-by-year projection with runway, drawdown years, selling order, what-ifs, a Monte Carlo stress test with crashes and uneven inflation, and export to Markdown or PDF
 - Reports: Net Worth and Income vs Expenses with category sparklines
 - Bank sync via providers (Pluggy for Brazilian banks, Enable Banking for ~2500 European PSD2 banks, SimpleFIN for US and international banks, extensible)
 - Multi-currency support with automatic FX conversion
@@ -117,6 +117,14 @@ The **Retirement** tab sits under Analysis.
 - **Views:** hover a year to see every asset's value, income by kind, outgoings, what was sold and any shortfall; switch the chart between Total, By asset and Table (a row per year, a column per asset).
 - **Saved plans:** name and save a whole setup, such as "without the mortgage", and reload it.
 - **Export:** Markdown, or a print-ready page for *Save as PDF* with the chart and the full table.
+
+**Simulate** stress-tests the plan from the Projection tab. Instead of one steady growth rate and inflation rate, it runs many random futures through the same engine, so your income, costs, what-ifs and selling order all apply:
+
+- **Crashes and slumps:** a yearly chance of a crash (a depth range you set) that hits stocks fully, property partly and bonds a little, followed by a few years of weaker growth.
+- **Uneven inflation:** a wandering rate around the plan's, with occasional multi-year spikes.
+- **Per-asset behaviour:** each asset's growth in the plan is its expected return; pick whether it behaves like stocks, bonds, property, cash or fixed.
+- **Results:** the chance the money lasts, a fan chart of outcomes, the share of futures that have run out by each year, and a *Where is it resilient?* grid of success rate against spending level and crash frequency.
+- **Repeatable:** a seed makes the same settings give the same answer.
 
 Plans and ticks are stored in your browser. The projection is a planning aid, not a forecast: no taxes and no loan amortisation.
 

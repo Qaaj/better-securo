@@ -71,6 +71,16 @@ export interface ProjectionInput {
   assets: ProjectionAsset[]
   assumptions: Assumptions
   whatIfs: WhatIf[]
+  /** One random path of markets for the simulator; without it the plan's fixed rates apply. */
+  market?: MarketPath
+}
+
+/** One simulated future: what inflation and each asset's growth turned out to be, year by year. */
+export interface MarketPath {
+  /** Inflation in each year, in percent. */
+  inflationPercent: number[]
+  /** An asset's growth in a year, in percent; undefined falls back to the asset's own rate. */
+  growthPercent: (asset: ProjectionAsset, year: number) => number | undefined
 }
 
 export type Phase = 'saving' | 'drawdown' | 'after'
@@ -118,6 +128,13 @@ function active(item: { fromYear: number; toYear?: number }, year: number): bool
 export function projectRetirement(input: ProjectionInput): Projection {
   const { assumptions: a } = input
   const inflation = a.inflationPercent / 100
+  // Prices at the start of each year against today's: fixed rate, or the simulated path compounded.
+  const priceLevel: number[] = []
+  let level = 1
+  for (let y = 0; y < a.horizonYears; y++) {
+    priceLevel.push(level)
+    level *= 1 + (input.market ? (input.market.inflationPercent[y] ?? a.inflationPercent) / 100 : inflation)
+  }
   const startYear = a.drawdownStartYear ?? 0
   const ordered = a.sellStrategy === 'ordered'
 
@@ -137,7 +154,7 @@ export function projectRetirement(input: ProjectionInput): Projection {
   let runwayYears: number | null = null
 
   for (let year = 0; year < a.horizonYears; year++) {
-    const inflate = (1 + inflation) ** year
+    const inflate = priceLevel[year]
     const incomeInflate = a.incomeIndexed ? inflate : 1
 
     // Assets that only exist from a later year arrive at the start of that year.
@@ -226,7 +243,8 @@ export function projectRetirement(input: ProjectionInput): Projection {
 
     for (const h of holdings) {
       if (!h.held) continue
-      h.value *= 1 + (h.growthPercent ?? 0) / 100
+      const rate = input.market?.growthPercent(h, year) ?? h.growthPercent ?? 0
+      h.value *= 1 + rate / 100
     }
 
     const byAsset: Record<string, number> = {}

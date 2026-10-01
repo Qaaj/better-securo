@@ -12,6 +12,7 @@ import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { PageHeader } from '@/components/page-header'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RetirementProjection } from '@/components/retirement-projection'
+import { RetirementSimulator } from '@/components/retirement-simulator'
 
 const EXCLUDED_KEY = 'retirement:excluded-income'
 
@@ -41,7 +42,8 @@ export default function RetirementPage() {
   const currency = user?.preferences?.currency_display ?? 'USD'
   const [excluded, setExcluded] = useState<Set<string>>(loadExcluded)
   const [params, setParams] = useSearchParams()
-  const tab = params.get('tab') === 'projection' ? 'projection' : 'overview'
+  const requested = params.get('tab')
+  const tab = requested === 'projection' || requested === 'simulate' ? requested : 'overview'
 
   const { data: items, isLoading } = useQuery({
     queryKey: ['recurring'],
@@ -81,10 +83,11 @@ export default function RetirementPage() {
     <div>
       <PageHeader section={t('nav.groupAnalysis')} title={t('retirement.title')} />
 
-      <Tabs value={tab} onValueChange={(value) => setParams(value === 'projection' ? { tab: 'projection' } : {})}>
+      <Tabs value={tab} onValueChange={(value) => setParams(value === 'overview' ? {} : { tab: value })}>
         <TabsList className="mb-4">
           <TabsTrigger value="overview">{t('retirement.tabOverview')}</TabsTrigger>
           <TabsTrigger value="projection">{t('retirement.tabProjection')}</TabsTrigger>
+          <TabsTrigger value="simulate">{t('retirement.tabSimulate')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -160,6 +163,11 @@ export default function RetirementPage() {
           </p>
           <RetirementProjection items={items ?? []} assets={assetList ?? []} excluded={excluded} currency={currency} locale={locale} />
 
+        </TabsContent>
+
+        <TabsContent value="simulate">
+          <p className="text-xs text-muted-foreground mb-3">{t('retirement.simulate.usesPlan')}</p>
+          <RetirementSimulator items={items ?? []} assets={assetList ?? []} excluded={excluded} currency={currency} locale={locale} />
         </TabsContent>
       </Tabs>
     </div>
