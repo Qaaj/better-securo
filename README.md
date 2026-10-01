@@ -20,22 +20,26 @@
 We believe personal finance should actually be <em>personal</em>. No corporation should sit between you and your financial data. Securo is an open-source finance manager that runs on your own infrastructure, giving you full visibility into your accounts, spending, and habits, without surrendering a single byte to third parties. Take back control.
 </p>
 
+## About this fork
+
+**better-securo** is a fork of [Securo](https://github.com/securo-finance/securo) that trims what it doesn't need and adds what it does: importing real bank exports without setup, a much better recurring-transactions workflow, categorizing thousands of transactions with a local LLM, and a retirement planner. Everything still runs on your own infrastructure; the optional LLM is a server you run yourself.
+
+- **Removed:** budgets, goals and expense-splitting groups (shared expenses, settlements and transaction splits). Category groups and asset groups are unchanged.
+- **Added:** see [What's new in this fork](#whats-new-in-this-fork).
+- Upstream's website, docs, demo and installer are for upstream Securo, not this fork.
+
 ## Quick Start
 
-**Linux & macOS** (uses Docker or Podman; installs Docker if neither is present):
+Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker/Podman on Linux), then:
 
 ```bash
-curl -fsSL https://usesecuro.com/install.sh | bash
-```
-
-**Windows:** Install [Docker Desktop](https://www.docker.com/products/docker-desktop/), then:
-
-```bash
-git clone https://github.com/securo-finance/securo.git && cd securo
+git clone https://github.com/Qaaj/better-securo.git && cd better-securo
 docker compose up --build
 ```
 
 Open [http://localhost:3000](http://localhost:3000) and create an account. That's it.
+
+The compose file is a development setup: your `backend/` and `frontend/` folders are mounted into the containers and reload on change. Compose derives volume names from the project name, so run a second copy under its own name (`docker compose -p other-name up`) if you do not want it to share data with an existing install.
 
 <p align="center">
   <img src="docs/screenshot.png" width="800" alt="Securo dashboard" />
@@ -45,10 +49,11 @@ Open [http://localhost:3000](http://localhost:3000) and create an account. That'
 
 - Multi-account management with running balances
 - Transaction management with search, filters, and CSV export
-- File import (OFX, QIF, CAMT, CSV)
-- Auto-categorization rules engine
-- Recurring transactions
-- Asset management with valuation tracking and growth rules
+- File import (OFX, QIF, CAMT, CSV), with **Revolut, Millennium BCP and Belfius CSV exports recognised automatically**
+- Auto-categorization rules engine, plus **LLM-assisted categorization** with a model running on your own machine
+- Recurring transactions that **forecast instead of cluttering the ledger**, and a one-click "Make recurring" on any transaction that works out the frequency for you
+- Asset management with valuation tracking, growth rules and **modelled income** (yields, rentals, planned sales)
+- A **Retirement** tab: passive income against outgoings, a year-by-year projection with runway, drawdown years, selling order, what-ifs, and export to Markdown or PDF
 - Reports: Net Worth and Income vs Expenses with category sparklines
 - Bank sync via providers (Pluggy for Brazilian banks, Enable Banking for ~2500 European PSD2 banks, SimpleFIN for US and international banks, extensible)
 - Multi-currency support with automatic FX conversion
@@ -56,6 +61,70 @@ Open [http://localhost:3000](http://localhost:3000) and create an account. That'
 - Two-factor authentication (TOTP) with brute-force protection
 - OIDC login support for Authentik, Pocket ID, and other standard providers
 - AI Agents (optional): self-hosted LLM chat with tool-use over your data, plus a per-agent RAG knowledge base
+
+## What's new in this fork
+
+### Bank exports work out of the box
+
+Drop a Revolut, Millennium BCP or Belfius CSV on the Import page and it is recognised, converted and shown for review. There is no column mapping and no separate converter step.
+
+- An export holding several currencies or accounts (a multi-currency Revolut file) gets a picker; each one is imported to the account you choose.
+- The bank's own transaction numbers become the transactions' external IDs, so importing the same file twice skips every row.
+- Conversion notes (folded fees, a debit/credit sign mismatch) are shown above the preview.
+
+Other CSVs go through the usual column mapping. The converters live in `backend/app/services/bank_converters/` and are plain Python with no extra dependencies.
+
+### Recurring transactions
+
+- **Forecast only by default.** A recurring item no longer writes placeholder transactions into your ledger. It shows up in forecasts and is matched to the real charge when it arrives. Switch `auto_generate` on per item if you want the old behaviour.
+- **Make recurring from any transaction.** Open a transaction and click *Make recurring*. As the dialog opens it looks through your history for the same merchant, first by name *and* exact amount, then by name alone, and infers weekly, biweekly, monthly, quarterly, semiannual or yearly from the gaps, with a confidence. It prefills the amount, day and last occurrence, and says what it found.
+- **Link instead of duplicating.** If an existing, still-unlinked recurring item has a close amount (within 15%, compared in your primary currency), the dialog offers to link the transaction to it.
+- **Totals.** The recurring page shows monthly, yearly and combined-per-month totals for your active costs.
+
+### Assets with income
+
+An asset can carry a **yield** (a percentage of its value a year: savings, bonds, dividend stocks), a **fixed amount** per month, quarter, half-year or year (a rental), and a **planned yearly sale** percentage. These feed the Retirement tab; they are modelled and never create transactions. Every asset works the same whether or not it is in a group.
+
+### Retirement
+
+The **Retirement** tab sits under Analysis.
+
+**Overview** sets the monthly equivalent of your recurring income and your assets' income against your recurring costs, and shows how much of the outgoings the income covers. Every line has a checkbox, so you can leave things out and see the effect.
+
+**Projection** is a year-by-year simulation:
+
+- **Runway:** how long the assets you could sell from last, with and without your what-ifs.
+- **Assets you would sell from:** a checkbox per asset (property, vehicles and liabilities are off by default), each with its own growth rate (its growth rule where it has one, otherwise 0, and editable here).
+- **Drawdown years:** a start year, before which surpluses are saved and shortfalls are assumed paid from earnings that are not modelled, and an optional end year that reports what is left.
+- **Selling order:** sell in proportion to value, or in your own order.
+- **What-ifs:** an extra monthly cost or income over a span of years, a one-off amount, selling an asset in a given year (value less fees joins the pool, its rent stops), or spending a fixed amount instead of your recurring costs.
+- **Inflation per line:** choose which income and cost lines rise with inflation, so a fixed mortgage payment or a fixed rent can stay the same. What-if amounts have the same tickbox.
+- **Temporary assets:** hypothetical assets ("more bonds") with an amount, growth, yield and an optional year they arrive. They live in the plan only and never touch your real assets.
+- **Views:** hover a year to see every asset's value, income by kind, outgoings, what was sold and any shortfall; switch the chart between Total, By asset and Table (a row per year, a column per asset).
+- **Saved plans:** name and save a whole setup, such as "without the mortgage", and reload it.
+- **Export:** Markdown, or a print-ready page for *Save as PDF* with the chart and the full table.
+
+Plans and ticks are stored in your browser. The projection is a planning aid, not a forecast: no taxes and no loan amortisation.
+
+### Automatic categorization (local LLM)
+
+**Categories → Automate** categorizes uncategorized transactions with a model running on your own machine, typically [LM Studio](https://lmstudio.ai/) or anything that speaks the OpenAI chat API.
+
+- Transactions are grouped by **merchant**, so thousands of rows become a few hundred decisions.
+- Merchants you have already categorized are answered from your own history without calling the model. The rest go to the model in batches, with your categorized merchants as examples, and every category's description in the prompt. The answer is constrained to your real categories by a JSON schema.
+- **Nothing is applied automatically.** Each merchant becomes a suggestion with a category and a confidence. Accept or change it (all of that merchant's transactions are categorized at once), skip it, or *Accept all high-confidence*. Click a suggestion's transaction count to inspect the transactions behind it first.
+- Optionally create a **categorization rule** when you accept, so future imports of that merchant are categorized automatically. *Create rules for accepted* does the same for merchants you accepted earlier.
+- Give each category a short **description** in its edit dialog ("Energy: electricity and gas bills, TotalEnergies, Luminus"). A small model uses it a lot.
+- It runs as a background job with progress and cancel, and carries on past a rejected batch.
+
+Point it at your model server in `.env` (this prefills the tab; you can still change it there):
+
+```
+CATEGORIZER_BASE_URL=http://host.docker.internal:1234   # a server on the Docker host; use its LAN/VPN address otherwise
+CATEGORIZER_MODEL=qwen3-4b-instruct-2507
+```
+
+Use a small **non-reasoning instruct** model. A 4B model categorizes about fifty merchants in under ten seconds, and an 8B model scored the same on a test against merchants you had already categorized. Large reasoning models spent their output thinking and returned no valid JSON. The Celery worker runs the job, so restart it after changing code: `docker compose restart celery-worker`.
 
 ## Bank Sync (Optional)
 
