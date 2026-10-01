@@ -100,6 +100,8 @@ export interface Category {
   is_hidden: boolean
   treat_as_transfer: boolean
   is_ignored: boolean
+  /** What the category is for; read by the automatic categorizer. */
+  description?: string | null
 }
 
 /** Active rules that assign a category, used when retiring one. */
@@ -549,6 +551,38 @@ export interface ExistingRecurringMatch {
   next_occurrence: string
   difference_pct: number
   same_name: boolean
+}
+
+export interface CategorizerSettings {
+  base_url: string
+  model: string
+}
+
+export interface CategorizationJob {
+  id: string
+  status: 'pending' | 'running' | 'completed' | 'cancelled' | 'failed'
+  base_url: string
+  model: string
+  total_merchants: number
+  processed_merchants: number
+  error: string | null
+  created_at: string
+  finished_at: string | null
+  counts: { pending: number; accepted: number; rejected: number }
+}
+
+export interface CategorizationSuggestion {
+  id: string
+  merchant_key: string
+  sample_description: string
+  tx_type: 'debit' | 'credit'
+  tx_count: number
+  total_amount_primary: string | number
+  suggested_category_id: string | null
+  confidence: 'high' | 'medium' | 'low'
+  source: 'history' | 'llm'
+  status: 'pending' | 'accepted' | 'rejected'
+  applied_count: number
 }
 
 export interface RecurringSuggestion {

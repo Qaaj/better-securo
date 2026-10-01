@@ -23,6 +23,7 @@ from app.models.asset import Asset
 from app.models.asset_group import AssetGroup
 from app.models.asset_value import AssetValue
 from app.models.bank_connection import BankConnection
+from app.models.categorization import CategorizationJob, CategorizationSuggestion
 from app.models.category import Category
 from app.models.category_group import CategoryGroup
 from app.models.credit_card_bill import CreditCardBill
@@ -42,6 +43,8 @@ _AUTOSTAMP_MODELS = (
     AssetGroup,
     AssetValue,
     BankConnection,
+    CategorizationJob,
+    CategorizationSuggestion,
     Category,
     CategoryGroup,
     CreditCardBill,

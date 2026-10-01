@@ -45,6 +45,9 @@ import type {
   InvoiceSummary,
   RecurringTransaction,
   RecurringSuggestion,
+  CategorizerSettings,
+  CategorizationJob,
+  CategorizationSuggestion,
   ProjectedTransaction,
   TransactionCalendarResponse,
   Rule,
@@ -1045,6 +1048,45 @@ export const reconciliation = {
   },
   decline: async (id: string): Promise<ReconciliationSuggestion> => {
     const { data } = await api.post(`/reconciliation/suggestions/${id}/decline`)
+    return data
+  },
+}
+
+export const categorization = {
+  settings: async (): Promise<CategorizerSettings> => {
+    const { data } = await api.get('/categorization/settings')
+    return data
+  },
+  testConnection: async (baseUrl: string): Promise<{ models: string[] }> => {
+    const { data } = await api.post('/categorization/test', { base_url: baseUrl })
+    return data
+  },
+  start: async (baseUrl: string, model: string): Promise<CategorizationJob> => {
+    const { data } = await api.post('/categorization/jobs', { base_url: baseUrl, model })
+    return data
+  },
+  latest: async (): Promise<CategorizationJob | null> => {
+    const { data } = await api.get('/categorization/jobs/latest')
+    return data
+  },
+  cancel: async (jobId: string): Promise<CategorizationJob> => {
+    const { data } = await api.post(`/categorization/jobs/${jobId}/cancel`)
+    return data
+  },
+  suggestions: async (jobId: string, limit = 50): Promise<{ items: CategorizationSuggestion[]; total: number }> => {
+    const { data } = await api.get(`/categorization/jobs/${jobId}/suggestions`, { params: { status: 'pending', limit } })
+    return data
+  },
+  accept: async (id: string, categoryId?: string): Promise<CategorizationSuggestion> => {
+    const { data } = await api.post(`/categorization/suggestions/${id}/accept`, { category_id: categoryId ?? null })
+    return data
+  },
+  reject: async (id: string): Promise<CategorizationSuggestion> => {
+    const { data } = await api.post(`/categorization/suggestions/${id}/reject`)
+    return data
+  },
+  acceptAll: async (jobId: string, minConfidence: 'high' | 'medium' | 'low' = 'high'): Promise<{ suggestions: number; transactions: number }> => {
+    const { data } = await api.post(`/categorization/jobs/${jobId}/accept-all`, { min_confidence: minConfidence })
     return data
   },
 }

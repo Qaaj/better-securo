@@ -48,6 +48,9 @@ x-backend-env: &backend-env
   # Agents/LLM feature — opt-in. Off by default so existing users pay
   # zero cost. Run `docker compose --profile agents up` after enabling.
   AGENTS_ENABLED: ${AGENTS_ENABLED:-false}
+  # Local LLM server used by the automatic categorizer (Categories > Automate).
+  CATEGORIZER_BASE_URL: ${CATEGORIZER_BASE_URL:-}
+  CATEGORIZER_MODEL: ${CATEGORIZER_MODEL:-qwen3-4b-instruct-2507}
   AGENTS_BUILTIN_MCP_URL: ${AGENTS_BUILTIN_MCP_URL:-http://mcp-server:8765/mcp}
   # Public URL external agents use to reach the built-in MCP server, shown in
   # the "External MCP access" panel. Blank → the UI derives it from the browser

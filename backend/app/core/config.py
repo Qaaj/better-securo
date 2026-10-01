@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/securo"
 
+    # Automatic categorization: where the local LLM server (LM Studio) lives.
+    # Prefills the Automate tab; blank = the user types it in.
+    categorizer_base_url: str = ""
+    categorizer_model: str = "qwen3-4b-instruct-2507"
+
     # Auth
     secret_key: SecretStr = SecretStr("change-me-in-production")
     local_auth_enabled: bool = True
