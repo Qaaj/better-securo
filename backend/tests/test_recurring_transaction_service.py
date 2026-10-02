@@ -171,6 +171,32 @@ async def test_update_recurring_transaction(
     assert updated.next_occurrence == date(2025, 1, 1)
 
 
+async def test_update_amount_restamps_primary_amount(
+    session: AsyncSession, test_user, test_workspace, test_account_for_recurring
+):
+    """Editing the price must not leave the old primary-currency figure behind:
+    totals and the "already tracked?" match read it."""
+    rec = await create_recurring_transaction(
+        session,
+        test_workspace.id, test_user.id,
+        RecurringTransactionCreate(
+            auto_generate=False,
+            description="Fees",
+            amount=Decimal("150"),
+            currency=test_user.primary_currency,
+            type="debit",
+            frequency="monthly",
+            start_date=date(2025, 1, 1),
+            account_id=test_account_for_recurring.id,
+        ),
+    )
+    assert rec.amount_primary == Decimal("150")
+    updated = await update_recurring_transaction(
+        session, rec.id, test_workspace.id, RecurringTransactionUpdate(amount=Decimal("126")),
+    )
+    assert updated.amount_primary == Decimal("126")
+
+
 async def _monthly_rule(
     session, test_workspace, test_user, account,
     start_date: date = date(2026, 1, 5), day_of_month: int | None = None,
