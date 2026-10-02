@@ -142,8 +142,20 @@ async def update_recurring_transaction(
     )
     previous_next_occurrence = recurring.next_occurrence
 
+    price_changed = any(
+        key in update_data and update_data[key] != getattr(recurring, key)
+        for key in ("amount", "currency")
+    )
+
     for key, value in update_data.items():
         setattr(recurring, key, value)
+
+    if price_changed:
+        # The primary-currency figure belongs to the old price; clear it so a
+        # stale value is never read, then work it out again.
+        recurring.amount_primary = None
+        recurring.fx_rate_used = None
+        await stamp_primary_amount(session, recurring.user_id, recurring, date_field="start_date")
 
     if schedule_changed:
         recurring.next_occurrence = _first_occurrence_on_or_after(
