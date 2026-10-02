@@ -935,6 +935,29 @@ async def import_transactions(
                 existing_statement.order_by(Transaction.created_at, Transaction.id)
             )
             duplicate = existing.scalars().first()
+            if not duplicate and txn_data.external_id:
+                # Rows imported before the file carried IDs have none; match
+                # those on their fields so re-importing does not double them.
+                legacy_statement = select(Transaction).where(
+                    Transaction.account_id == account_id,
+                    Transaction.external_id.is_(None),
+                    Transaction.date == txn_data.date,
+                    Transaction.amount == txn_data.amount,
+                    Transaction.type == txn_data.type,
+                    or_(
+                        Transaction.description == txn_data.description,
+                        Transaction.original_description == txn_data.description,
+                    ),
+                )
+                if matched_existing_ids:
+                    legacy_statement = legacy_statement.where(
+                        Transaction.id.not_in(matched_existing_ids)
+                    )
+                duplicate = (
+                    await session.execute(
+                        legacy_statement.order_by(Transaction.created_at, Transaction.id)
+                    )
+                ).scalars().first()
             if not duplicate:
                 duplicate = await find_unique_transaction_match(
                     session,

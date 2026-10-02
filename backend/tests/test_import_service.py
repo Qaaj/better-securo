@@ -2817,6 +2817,41 @@ async def test_import_tolerates_duplicate_external_id_rows(
 
 
 @pytest.mark.asyncio
+async def test_import_with_ids_skips_rows_imported_earlier_without_ids(
+    session: AsyncSession, test_user: User, test_workspace, test_account: Account,
+):
+    """Rows imported before the file carried IDs have none. Re-importing the
+    same file, now with IDs, must match them on their fields one-to-one and
+    still import a genuinely new row and a second identical purchase."""
+    from app.models.transaction import Transaction
+    from app.schemas.transaction import TransactionImport
+    from sqlalchemy import select
+
+    d = date(2026, 3, 2)
+    session.add(Transaction(
+        id=uuid.uuid4(), user_id=test_user.id, workspace_id=test_workspace.id,
+        account_id=test_account.id, external_id=None, description="COFFEE SHOP",
+        amount=Decimal("4.50"), date=d, type="debit", source="import",
+    ))
+    await session.commit()
+
+    def row(ext, desc="COFFEE SHOP", day=d):
+        return TransactionImport(description=desc, amount=Decimal("4.50"), date=day, type="debit", external_id=ext)
+
+    imported, skipped, _, _ = await import_transactions(
+        session, test_workspace.id, test_user.id, test_account.id,
+        [row("id-1"), row("id-2"), row("id-3", desc="BAKERY")], "csv", detected_format="csv",
+    )
+
+    assert skipped == 1  # the first coffee is the one imported earlier
+    assert imported == 2  # a second identical purchase and the bakery
+    count = (await session.execute(
+        select(Transaction).where(Transaction.account_id == test_account.id)
+    )).scalars().all()
+    assert len(count) == 3
+
+
+@pytest.mark.asyncio
 async def test_import_external_id_reconciles_matching_synced_transaction(
     session: AsyncSession, test_user: User, test_workspace, test_account: Account,
 ):

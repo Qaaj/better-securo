@@ -2,6 +2,7 @@
 import re
 import unicodedata
 import uuid
+from functools import lru_cache
 from collections.abc import Collection
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -17,6 +18,9 @@ def _strip_accents(text: str) -> str:
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
+# More rules than the re module's own cache holds (512) makes every row of a
+# large import recompile every pattern; keep them all.
+@lru_cache(maxsize=8192)
 def compile_rule_regex(pattern: str) -> re.Pattern[str]:
     """Compile a regex using Securo's runtime normalization and safety policy."""
     effective_pattern = _strip_accents(pattern)
