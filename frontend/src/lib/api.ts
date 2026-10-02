@@ -1059,6 +1059,16 @@ export const reconciliation = {
   },
 }
 
+export const retirementState = {
+  get: async (): Promise<{ data: Record<string, unknown>; updated_at: string | null }> => {
+    const { data } = await api.get('/retirement/state')
+    return data
+  },
+  put: async (data: Record<string, unknown>): Promise<void> => {
+    await api.put('/retirement/state', { data })
+  },
+}
+
 export const categorization = {
   settings: async (): Promise<CategorizerSettings> => {
     const { data } = await api.get('/categorization/settings')
