@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -12,6 +12,8 @@ import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { PageHeader } from '@/components/page-header'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RetirementProjection } from '@/components/retirement-projection'
+import { write } from '@/lib/retirement-plan'
+import { loadFromServer } from '@/lib/retirement-sync'
 import { RetirementSimulator } from '@/components/retirement-simulator'
 
 const EXCLUDED_KEY = 'retirement:excluded-income'
@@ -27,14 +29,25 @@ function loadExcluded(): Set<string> {
 }
 
 function saveExcluded(ids: Set<string>) {
-  try {
-    window.localStorage.setItem(EXCLUDED_KEY, JSON.stringify([...ids]))
-  } catch {
-    // Private mode or blocked storage: the choice just does not persist.
-  }
+  write(EXCLUDED_KEY, [...ids])
 }
 
+/** Brings the saved plans down from the server before the page reads them. */
 export default function RetirementPage() {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    loadFromServer().finally(() => {
+      if (!cancelled) setReady(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  return ready ? <RetirementContent /> : null
+}
+
+function RetirementContent() {
   const { t } = useTranslation()
   const locale = useDisplayLocale()
   const { mask } = usePrivacyMode()

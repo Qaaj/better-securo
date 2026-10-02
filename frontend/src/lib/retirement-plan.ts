@@ -1,3 +1,4 @@
+import { SCENARIOS_KEY, scheduleSync } from '@/lib/retirement-sync'
 import { annualGrowthPercent, assetFixedMonthly, assetValue, computeRetirement } from '@/lib/retirement'
 import { defaultDrawable, type Assumptions, type ProjectionAsset, type ProjectionInput, type WhatIf } from '@/lib/retirement-projection'
 import type { Asset, RecurringTransaction } from '@/types'
@@ -37,7 +38,7 @@ export const DEFAULT_PLAN: Plan = {
   whatIfs: [],
 }
 export const PLAN_KEY = 'retirement:plan'
-export const SCENARIOS_KEY = 'retirement:scenarios'
+export { SCENARIOS_KEY }
 
 export function read<T>(key: string, fallback: T): T {
   try {
@@ -54,6 +55,7 @@ export function write(key: string, value: unknown) {
   } catch {
     // Blocked storage: the plan just does not persist.
   }
+  scheduleSync()
 }
 
 /** What the retirement page counts, turned into the projection's input, for the saved plan. */

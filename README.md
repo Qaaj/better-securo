@@ -126,7 +126,7 @@ The **Retirement** tab sits under Analysis.
 - **Results:** the chance the money lasts, a fan chart of outcomes, the share of futures that have run out by each year, and a *Where is it resilient?* grid of success rate against spending level and crash frequency.
 - **Repeatable:** a seed makes the same settings give the same answer.
 
-Plans and ticks are stored in your browser. The projection is a planning aid, not a forecast: no taxes and no loan amortisation.
+Plans, ticks and simulator settings are saved with your workspace on the server (the browser keeps a working copy), so they follow you to any browser or address. Saved plans that only exist in a browser are added when you open the page. The projection is a planning aid, not a forecast: no taxes and no loan amortisation.
 
 ### Automatic categorization (local LLM)
 
