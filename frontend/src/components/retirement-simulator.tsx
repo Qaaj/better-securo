@@ -5,11 +5,14 @@ import { buildProjectionInputs, read, write, DEFAULT_PLAN, PLAN_KEY } from '@/li
 import {
   DEFAULT_SIM,
   RISK_CLASSES,
+  BUFFER_YEARS,
   SWEEP_CRASH,
   SWEEP_SPEND,
   defaultRiskClass,
   simulate,
+  bufferSweep,
   sweep,
+  type BufferCell,
   type RiskClass,
   type SimParams,
   type SweepCell,
@@ -82,6 +85,8 @@ export function RetirementSimulator({
   // The sweep result belongs to the exact inputs it was run for; a change makes it stale until the next one lands.
   const [swept, setSwept] = useState<{ input: unknown; params: SimParams; types: unknown; cells: SweepCell[] } | null>(null)
   const cells = swept && swept.input === input && swept.params === params && swept.types === types ? swept.cells : null
+  const [buffered, setBuffered] = useState<{ input: unknown; params: SimParams; types: unknown; cells: BufferCell[] } | null>(null)
+  const bufferCells = buffered && buffered.input === input && buffered.params === params && buffered.types === types ? buffered.cells : null
 
   useEffect(() => {
     const timer = setTimeout(() => setResult(simulate(input, params, types)), 200)
@@ -101,11 +106,25 @@ export function RetirementSimulator({
     }
   }, [input, params, types])
 
+  useEffect(() => {
+    const signal = { cancelled: false }
+    const timer = setTimeout(() => {
+      bufferSweep(input, params, types, SWEEP_RUNS, signal).then((done) => {
+        if (!signal.cancelled) setBuffered({ input, params, types, cells: done })
+      })
+    }, 600)
+    return () => {
+      signal.cancelled = true
+      clearTimeout(timer)
+    }
+  }, [input, params, types])
+
   const money = (v: number) => mask(formatCurrency(v, currency, locale))
   const axis = (v: number) => (privacyMode ? '' : v === 0 ? '0' : formatCompact(v, currency, locale))
   const percent = (v: number) => `${Math.round(v * 100)}%`
 
-  const bandData = (result?.bands ?? []).map((b) => ({
+  const view = result ? (params.todaysMoney ? result.real : result.nominal) : null
+  const bandData = (view?.bands ?? []).map((b) => ({
     label: String(thisYear + b.year),
     wide: [Math.max(0, Math.round(b.p10)), Math.round(b.p90)],
     mid: [Math.max(0, Math.round(b.p25)), Math.round(b.p75)],
@@ -144,12 +163,12 @@ export function RetirementSimulator({
             </div>
             <div className="rounded-lg border border-border p-3">
               <p className="text-xs text-muted-foreground">{t('retirement.simulate.typicalEnd')}</p>
-              <p className="text-lg font-semibold mt-1">{result ? money(result.medianEnd) : '…'}</p>
+              <p className="text-lg font-semibold mt-1">{view ? money(view.medianEnd) : '…'}</p>
               <p className="text-[11px] text-muted-foreground mt-1">{t('retirement.simulate.typicalEndHint')}</p>
             </div>
             <div className="rounded-lg border border-border p-3">
               <p className="text-xs text-muted-foreground">{t('retirement.simulate.badEnd')}</p>
-              <p className="text-lg font-semibold mt-1">{result ? money(result.worstCaseEnd) : '…'}</p>
+              <p className="text-lg font-semibold mt-1">{view ? money(view.worstCaseEnd) : '…'}</p>
               <p className="text-[11px] text-muted-foreground mt-1">{t('retirement.simulate.badEndHint')}</p>
             </div>
             <div className="rounded-lg border border-border p-3">
@@ -162,7 +181,21 @@ export function RetirementSimulator({
           </div>
 
           <div>
-            <p className="text-xs font-medium text-muted-foreground mb-2">{t('retirement.simulate.fanTitle')}</p>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-xs font-medium text-muted-foreground">{t('retirement.simulate.fanTitle')}</p>
+              <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+                {([true, false] as const).map((today) => (
+                  <button
+                    key={String(today)}
+                    type="button"
+                    onClick={() => set('todaysMoney', today)}
+                    className={`px-2.5 py-1 ${params.todaysMoney === today ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {today ? t('retirement.simulate.todaysMoney') : t('retirement.simulate.futureMoney')}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={bandData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
@@ -180,7 +213,7 @@ export function RetirementSimulator({
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1">{t('retirement.simulate.fanHint')}</p>
+            <p className="text-[11px] text-muted-foreground mt-1">{params.todaysMoney ? t('retirement.simulate.fanHintToday') : t('retirement.simulate.fanHint')}</p>
           </div>
 
           <div>
@@ -249,6 +282,42 @@ export function RetirementSimulator({
             <p className="text-[11px] text-muted-foreground mt-1">{t('retirement.simulate.sweepHint', { runs: SWEEP_RUNS })}</p>
           </>
         )}
+      </div>
+
+      <div className="bg-card rounded-xl border border-border shadow-sm p-4 sm:p-5">
+        <p className="text-sm font-semibold text-foreground">{t('retirement.simulate.bufferTitle')}</p>
+        <p className="text-xs text-muted-foreground mt-0.5 mb-3">{t('retirement.simulate.bufferSubtitle')}</p>
+        {!bufferCells || bufferCells.length < BUFFER_YEARS.length ? (
+          <p className="text-xs text-muted-foreground">{t('retirement.simulate.sweeping', { done: bufferCells?.length ?? 0, total: BUFFER_YEARS.length })}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="text-xs border-separate border-spacing-1">
+              <thead>
+                <tr>
+                  <th className="text-left font-medium text-muted-foreground pr-3">{t('retirement.simulate.bufferRow')}</th>
+                  {bufferCells.map((c) => (
+                    <th key={c.years} className="font-medium text-muted-foreground px-2">{c.years === 0 ? t('retirement.simulate.noBuffer') : t('retirement.simulate.bufferYearsCell', { years: c.years })}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th className="text-left font-medium text-muted-foreground pr-3">{t('retirement.simulate.successRate')}</th>
+                  {bufferCells.map((c) => (
+                    <td key={c.years} className="rounded text-center px-2 py-1.5 tabular-nums" style={{ background: cellColor(c.successRate) }}>{percent(c.successRate)}</td>
+                  ))}
+                </tr>
+                <tr>
+                  <th className="text-left font-medium text-muted-foreground pr-3">{t('retirement.simulate.bufferTypical')}</th>
+                  {bufferCells.map((c) => (
+                    <td key={c.years} className="text-center px-2 py-1.5 tabular-nums">{money(c.medianEnd)}</td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-[11px] text-muted-foreground mt-2">{t('retirement.simulate.bufferHint', { runs: SWEEP_RUNS })}</p>
       </div>
 
       <div className="bg-card rounded-xl border border-border shadow-sm p-4 sm:p-5 space-y-4">

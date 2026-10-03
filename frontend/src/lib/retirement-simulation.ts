@@ -43,6 +43,8 @@ export interface SimParams {
   /** Chance a year starts a spell of higher inflation, percent, and the extra points it adds for three years. */
   spikeChancePercent: number
   spikeExtraPoints: number
+  /** Show outcomes in today's money rather than future money. */
+  todaysMoney: boolean
   /** The risk class each asset (by id) is treated as; unset assets follow their type. */
   classes: Record<string, RiskClass>
 }
@@ -59,6 +61,7 @@ export const DEFAULT_SIM: SimParams = {
   inflationSpread: 1.5,
   spikeChancePercent: 3,
   spikeExtraPoints: 5,
+  todaysMoney: true,
   classes: {},
 }
 
@@ -151,19 +154,25 @@ export function drawMarket(
   }
 }
 
+export interface Bands {
+  /** Percentiles of the drawable assets at the end of each year, 10/25/50/75/90. */
+  bands: { year: number; p10: number; p25: number; p50: number; p75: number; p90: number }[]
+  /** Drawable assets left at the end in the worst 5% of futures. */
+  worstCaseEnd: number
+  medianEnd: number
+}
+
 export interface SimResult {
   runs: number
   /** Share of futures where the assets lasted the whole horizon, 0..1. */
   successRate: number
-  /** Percentiles of the drawable assets at the end of each year (nominal), 10/25/50/75/90. */
-  bands: { year: number; p10: number; p25: number; p50: number; p75: number; p90: number }[]
+  /** Outcomes in future money, and in today's money (each future's own inflation taken out). */
+  nominal: Bands
+  real: Bands
   /** For each year, the share of futures that had run out by then, 0..1. */
   depletedBy: number[]
   /** Median year the assets ran out among the futures that ran out, or null if none did. */
   medianRunOutYear: number | null
-  /** Drawable assets left at the end in the worst 5% of futures. */
-  worstCaseEnd: number
-  medianEnd: number
 }
 
 function percentile(sorted: number[], p: number): number {
@@ -181,9 +190,9 @@ export function simulate(input: ProjectionInput, params: SimParams, types: Recor
   const years = input.assumptions.horizonYears
   const rng = makeRng(params.seed)
   const classOf = classifier(params, types)
-  const perYear: number[][] = Array.from({ length: years }, () => [])
+  const nominalYears: number[][] = Array.from({ length: years }, () => [])
+  const realYears: number[][] = Array.from({ length: years }, () => [])
   const depletedAt: number[] = []
-  const ends: number[] = []
   let lasted = 0
 
   for (let run = 0; run < params.runs; run++) {
@@ -191,32 +200,37 @@ export function simulate(input: ProjectionInput, params: SimParams, types: Recor
     const projection = projectRetirement({ ...input, market })
     if (projection.runwayYears === null) lasted += 1
     else depletedAt.push(Math.floor(projection.runwayYears))
-    projection.rows.forEach((row, i) => perYear[i].push(row.drawable))
-    ends.push(projection.rows[years - 1]?.drawable ?? 0)
+    projection.rows.forEach((row, i) => {
+      nominalYears[i].push(row.drawable)
+      realYears[i].push(row.drawable / row.deflator)
+    })
   }
 
-  const bands = perYear.map((values, year) => {
-    const sorted = [...values].sort((a, b) => a - b)
-    return {
-      year,
-      p10: percentile(sorted, 10),
-      p25: percentile(sorted, 25),
-      p50: percentile(sorted, 50),
-      p75: percentile(sorted, 75),
-      p90: percentile(sorted, 90),
-    }
-  })
+  const summarise = (perYear: number[][]): Bands => {
+    const bands = perYear.map((values, year) => {
+      const sorted = [...values].sort((a, b) => a - b)
+      return {
+        year,
+        p10: percentile(sorted, 10),
+        p25: percentile(sorted, 25),
+        p50: percentile(sorted, 50),
+        p75: percentile(sorted, 75),
+        p90: percentile(sorted, 90),
+      }
+    })
+    const ends = [...(perYear[years - 1] ?? [])].sort((a, b) => a - b)
+    return { bands, worstCaseEnd: percentile(ends, 5), medianEnd: percentile(ends, 50) }
+  }
+
   const depletedBy = Array.from({ length: years }, (_, year) => depletedAt.filter((d) => d <= year).length / params.runs)
   const sortedDepleted = [...depletedAt].sort((a, b) => a - b)
-  const sortedEnds = [...ends].sort((a, b) => a - b)
   return {
     runs: params.runs,
     successRate: lasted / params.runs,
-    bands,
+    nominal: summarise(nominalYears),
+    real: summarise(realYears),
     depletedBy,
     medianRunOutYear: sortedDepleted.length ? percentile(sortedDepleted, 50) : null,
-    worstCaseEnd: percentile(sortedEnds, 5),
-    medianEnd: percentile(sortedEnds, 50),
   }
 }
 
@@ -255,6 +269,34 @@ export async function sweep(
       cells.push({ spend, crash, successRate: result.successRate })
       await new Promise((resolve) => setTimeout(resolve, 0))
     }
+  }
+  return cells
+}
+
+export interface BufferCell {
+  years: number
+  successRate: number
+  /** Median drawable assets at the end, in today's money. */
+  medianEnd: number
+}
+
+export const BUFFER_YEARS = [0, 1, 2, 3, 5]
+
+/** The same futures with different cash buffers, to see what holding cash is worth. */
+export async function bufferSweep(
+  input: ProjectionInput,
+  params: SimParams,
+  types: Record<string, string>,
+  runs: number,
+  signal?: { cancelled: boolean },
+): Promise<BufferCell[]> {
+  const cells: BufferCell[] = []
+  for (const years of BUFFER_YEARS) {
+    if (signal?.cancelled) return cells
+    const withBuffer = { ...input, assumptions: { ...input.assumptions, bufferYears: years } }
+    const result = simulate(withBuffer, { ...params, runs }, types)
+    cells.push({ years, successRate: result.successRate, medianEnd: result.real.medianEnd })
+    await new Promise((resolve) => setTimeout(resolve, 0))
   }
   return cells
 }

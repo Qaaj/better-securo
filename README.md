@@ -113,6 +113,9 @@ The **Retirement** tab sits under Analysis.
 - **Selling order:** sell in proportion to value, or in your own order.
 - **What-ifs:** an extra monthly cost or income over a span of years, a one-off amount, selling an asset in a given year (value less fees joins the pool, its rent stops), or spending a fixed amount instead of your recurring costs.
 - **Inflation per line:** choose which income and cost lines rise with inflation, so a fixed mortgage payment or a fixed rent can stay the same. What-if amounts have the same tickbox.
+- **Taxes:** optional rates on income, on yields and rent, and on the gain when you sell. Each asset keeps a cost basis from its purchase price (without one, only growth from today is taxed), a sale is sized so what arrives after tax covers the cost, and any asset can be marked tax free.
+- **Lines that end:** give a cost or income a last year, such as when a mortgage is paid off or a rental stops; it drops out of the totals after that.
+- **Cash buffer:** hold some years of costs in cash from the first drawdown year, spend it first, and refill it only after a year in which the other assets did not fall.
 - **Temporary assets:** hypothetical assets ("more bonds") with an amount, growth, yield and an optional year they arrive. They live in the plan only and never touch your real assets.
 - **Views:** hover a year to see every asset's value, income by kind, outgoings, what was sold and any shortfall; switch the chart between Total, By asset and Table (a row per year, a column per asset).
 - **Saved plans:** name and save a whole setup, such as "without the mortgage", and reload it.
@@ -123,10 +126,11 @@ The **Retirement** tab sits under Analysis.
 - **Crashes and slumps:** a yearly chance of a crash (a depth range you set) that hits stocks fully, property partly and bonds a little, followed by a few years of weaker growth.
 - **Uneven inflation:** a wandering rate around the plan's, with occasional multi-year spikes.
 - **Per-asset behaviour:** each asset's growth in the plan is its expected return; pick whether it behaves like stocks, bonds, property, cash or fixed.
-- **Results:** the chance the money lasts, a fan chart of outcomes, the share of futures that have run out by each year, and a *Where is it resilient?* grid of success rate against spending level and crash frequency.
+- **Results:** the chance the money lasts, in today's money or future money, a fan chart of outcomes, the share of futures that have run out by each year, and a *Where is it resilient?* grid of success rate against spending level and crash frequency.
+- **Cash buffer comparison:** the same futures with no buffer and with 1 to 5 years of costs in cash, to see what holding cash is worth.
 - **Repeatable:** a seed makes the same settings give the same answer.
 
-Plans, ticks and simulator settings are saved with your workspace on the server (the browser keeps a working copy), so they follow you to any browser or address. Saved plans that only exist in a browser are added when you open the page. The projection is a planning aid, not a forecast: no taxes and no loan amortisation.
+Plans, ticks and simulator settings are saved with your workspace on the server (the browser keeps a working copy), so they follow you to any browser or address. Saved plans that only exist in a browser are added when you open the page. The projection is a planning aid, not a forecast: no loan amortisation.
 
 ### Automatic categorization (local LLM)
 

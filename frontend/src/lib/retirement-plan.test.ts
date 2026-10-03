@@ -1,0 +1,38 @@
+import { describe, expect, it } from 'vitest'
+import { DEFAULT_PLAN, buildProjectionInputs, type Plan } from './retirement-plan'
+import type { Asset, RecurringTransaction } from '@/types'
+
+const item = (id: string, type: 'debit' | 'credit', amount: number): RecurringTransaction =>
+  ({ id, description: id, type, amount, currency: 'EUR', amount_primary: amount, frequency: 'monthly', is_active: true }) as unknown as RecurringTransaction
+
+const asset = { id: 'a1', name: 'Fund', type: 'investment', currency: 'EUR', current_value: 1000, current_value_primary: 1000, purchase_price: 400, is_archived: false, sell_date: null } as unknown as Asset
+
+const plan = (over: Partial<Plan> = {}): Plan => ({ ...DEFAULT_PLAN, ...over })
+const none = new Set<string>()
+
+describe('buildProjectionInputs', () => {
+  it('counts every line while none has an end year', () => {
+    const { base } = buildProjectionInputs(plan(), [item('rent', 'debit', 500), item('pay', 'credit', 200)], [], 'EUR', none, 2026)
+    expect(base.outgoingMonthly).toBe(500)
+    expect(base.recurringIncomeMonthly).toBe(200)
+    expect(base.timed).toEqual([])
+  })
+
+  it('moves a line with an end year out of the totals and into its own', () => {
+    const { base } = buildProjectionInputs(
+      plan({ lineEnd: { mortgage: 2031 }, flat: ['mortgage'] }),
+      [item('mortgage', 'debit', 1000), item('food', 'debit', 300)],
+      [],
+      'EUR',
+      none,
+      2026,
+    )
+    expect(base.outgoingMonthly).toBe(300)
+    expect(base.timed).toEqual([{ id: 'mortgage', kind: 'expense', label: 'mortgage', monthly: 1000, fromYear: 0, toYear: 5, inflates: false }])
+  })
+
+  it('passes the purchase price on as the cost basis and the tax-free choice', () => {
+    const { projectionAssets } = buildProjectionInputs(plan({ taxFree: { a1: true } }), [], [asset], 'EUR', none, 2026)
+    expect(projectionAssets[0]).toMatchObject({ costBasis: 400, taxFree: true })
+  })
+})

@@ -58,6 +58,13 @@ function conversionRate(asset: Asset, displayCurrency: string): number | null {
   return null
 }
 
+/** What the asset cost, in the display currency, or null when it is not known. */
+export function assetCostBasis(asset: Asset, displayCurrency: string): number | null {
+  if (asset.purchase_price == null) return null
+  const rate = conversionRate(asset, displayCurrency)
+  return rate == null ? null : asset.purchase_price * rate
+}
+
 /** The asset's own growth rule as a rate per year, or null when it has none. */
 export function annualGrowthPercent(asset: Asset, value: number | null): number | null {
   if (!asset.growth_type || asset.growth_rate == null || !asset.growth_frequency) return null

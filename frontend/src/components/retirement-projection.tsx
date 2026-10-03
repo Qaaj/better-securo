@@ -90,6 +90,7 @@ export function RetirementProjection({
     label: String(thisYear + row.year),
     income: Math.round(row.income),
     outgoing: Math.round(row.outgoing),
+    tax: Math.round(row.tax),
   }))
   const axis = (v: number) => (privacyMode ? '' : v === 0 ? '0' : formatCompact(v, currency, locale))
   const startYear = plan.assumptions.drawdownStartYear ?? 0
@@ -188,6 +189,7 @@ export function RetirementProjection({
           {scenario.leftAtEnd !== null && endYear !== undefined && (
             <Stat label={t('retirement.projection.leftAtEnd', { year: thisYear + endYear })} value={money(scenario.leftAtEnd)} tone={scenario.leftAtEnd > 0 ? 'positive' : 'negative'} hint={t('retirement.projection.leftAtEndHint')} />
           )}
+          {scenario.totalTax > 0 && <Stat label={t('retirement.projection.totalTax')} value={money(scenario.totalTax)} hint={t('retirement.projection.totalTaxHint', { years: horizon })} />}
           <Stat label={t('retirement.projection.drawableNow')} value={money(scenario.drawableNow)} hint={t('retirement.projection.drawableHint')} />
           <Stat label={t('retirement.projection.inYears', { years: horizon })} value={money(scenario.rows[horizon - 1]?.drawable ?? 0)} hint={t('retirement.projection.netWorthIn', { amount: money(scenario.rows[horizon - 1]?.netWorth ?? 0) })} />
         </div>
@@ -248,6 +250,7 @@ export function RetirementProjection({
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line type="monotone" dataKey="income" name={t('retirement.projection.income')} stroke="#10B981" dot={false} strokeWidth={2} />
                 <Line type="monotone" dataKey="outgoing" name={t('retirement.projection.outgoing')} stroke="#F43F5E" dot={false} strokeWidth={2} />
+                {scenario.totalTax > 0 && <Line type="monotone" dataKey="tax" name={t('retirement.projection.tax')} stroke="#F59E0B" dot={false} strokeWidth={2} />}
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -266,6 +269,14 @@ export function RetirementProjection({
             else next.add(id)
             setPlan({ ...plan, flat: [...next] })
           }}
+          ends={plan.lineEnd ?? {}}
+          onEnd={(id, year) => {
+            const next = { ...(plan.lineEnd ?? {}) }
+            if (year === null) delete next[id]
+            else next[id] = year
+            setPlan({ ...plan, lineEnd: next })
+          }}
+          thisYear={thisYear}
         />
         <SpendFrom
           assets={projectionAssets}
@@ -284,6 +295,12 @@ export function RetirementProjection({
           onAddTemp={(temp) => setPlan({ ...plan, tempAssets: [...(plan.tempAssets ?? []), temp] })}
           onChangeTemp={(id, value) => setPlan({ ...plan, tempAssets: (plan.tempAssets ?? []).map((a) => (a.id === id ? { ...a, value } : a)) })}
           onRemoveTemp={(id) => setPlan({ ...plan, tempAssets: (plan.tempAssets ?? []).filter((a) => a.id !== id) })}
+        />
+        <TaxFreeAssets
+          assets={projectionAssets.filter((a) => a.drawable && a.value > 0)}
+          taxFree={plan.taxFree ?? {}}
+          show={(plan.assumptions.taxGainsPercent ?? 0) > 0}
+          onToggle={(id, value) => setPlan({ ...plan, taxFree: { ...(plan.taxFree ?? {}), [id]: value } })}
         />
         <WhatIfs
           whatIfs={plan.whatIfs}
@@ -326,7 +343,7 @@ function Assumptions({ plan, setAssumption, thisYear }: { plan: Plan; setAssumpt
   const { t } = useTranslation()
   const uid = useId()
   const a = plan.assumptions
-  const number = (key: 'horizonYears' | 'inflationPercent', label: string, suffix: string, min: number, max: number) => (
+  const number = (key: 'horizonYears' | 'inflationPercent' | 'taxIncomePercent' | 'taxAssetIncomePercent' | 'taxGainsPercent' | 'bufferYears', label: string, suffix: string, min: number, max: number) => (
     <div className="space-y-1.5">
       <Label htmlFor={`${uid}-${key}`} className="text-xs">{label}</Label>
       <div className="relative">
@@ -336,7 +353,7 @@ function Assumptions({ plan, setAssumption, thisYear }: { plan: Plan; setAssumpt
           step="any"
           min={min}
           max={max}
-          value={a[key]}
+          value={a[key] ?? 0}
           onChange={(e) => {
             const v = parseFloat(e.target.value)
             if (!Number.isNaN(v)) setAssumption(key, Math.min(max, Math.max(min, v)))
@@ -408,6 +425,15 @@ function Assumptions({ plan, setAssumption, thisYear }: { plan: Plan; setAssumpt
         <input type="checkbox" checked={a.incomeIndexed} onChange={(e) => setAssumption('incomeIndexed', e.target.checked)} className="size-4 accent-primary" />
         {t('retirement.projection.incomeIndexed')}
       </label>
+      <p className="text-xs font-medium text-muted-foreground mt-4 mb-1">{t('retirement.projection.taxes')}</p>
+      <p className="text-[11px] text-muted-foreground mb-2">{t('retirement.projection.taxesHint')}</p>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {number('taxIncomePercent', t('retirement.projection.taxIncome'), '%', 0, 80)}
+        {number('taxAssetIncomePercent', t('retirement.projection.taxAssetIncome'), '%', 0, 80)}
+        {number('taxGainsPercent', t('retirement.projection.taxGains'), '%', 0, 80)}
+        {number('bufferYears', t('retirement.projection.bufferYears'), t('retirement.projection.yearsSuffix'), 0, 10)}
+      </div>
+      <p className="text-[11px] text-muted-foreground mt-2">{t('retirement.projection.bufferHint')}</p>
     </div>
   )
 }
@@ -421,6 +447,9 @@ function InflationLines({
   incomeIndexed,
   money,
   onToggle,
+  ends,
+  onEnd,
+  thisYear,
 }: {
   income: IncomeLine[]
   outgoing: OutgoingLine[]
@@ -428,6 +457,9 @@ function InflationLines({
   incomeIndexed: boolean
   money: (v: number) => string
   onToggle: (id: string) => void
+  ends: Record<string, number>
+  onEnd: (id: string, year: number | null) => void
+  thisYear: number
 }) {
   const { t } = useTranslation()
   const incomeRows = income.map((l) => ({ id: l.id, label: l.label, monthly: l.monthly }))
@@ -458,6 +490,17 @@ function InflationLines({
                     aria-label={t('retirement.projection.inflationApplies', { name: row.label })}
                   />
                   <span className="min-w-0 flex-1 truncate">{row.label}</span>
+                  <Input
+                    type="number"
+                    min={thisYear}
+                    step="1"
+                    value={ends[row.id] ?? ''}
+                    placeholder={t('retirement.projection.untilPlaceholder')}
+                    onChange={(e) => onEnd(row.id, e.target.value === '' ? null : parseInt(e.target.value, 10) || null)}
+                    className="h-7 w-[4.5rem] px-1.5 text-center text-xs shrink-0"
+                    aria-label={t('retirement.projection.countsUntil', { name: row.label })}
+                    title={t('retirement.projection.countsUntilHint')}
+                  />
                   <span className="shrink-0 tabular-nums text-xs text-muted-foreground">{money(row.monthly)}</span>
                 </label>
               </li>
@@ -480,6 +523,45 @@ function InflationLines({
         <TabsContent value="income" className="mt-3">{list(incomeRows, !incomeIndexed)}</TabsContent>
         <TabsContent value="costs" className="mt-3">{list(costRows, false)}</TabsContent>
       </Tabs>
+    </div>
+  )
+}
+
+/** Assets whose gains are left out of the tax, such as a tax-sheltered account. */
+function TaxFreeAssets({
+  assets,
+  taxFree,
+  show,
+  onToggle,
+}: {
+  assets: ProjectionAsset[]
+  taxFree: Record<string, boolean>
+  show: boolean
+  onToggle: (id: string, value: boolean) => void
+}) {
+  const { t } = useTranslation()
+  if (!show || assets.length === 0) return null
+  return (
+    <div>
+      <p className="text-xs font-medium text-muted-foreground">{t('retirement.projection.taxFreeTitle')}</p>
+      <p className="text-[11px] text-muted-foreground mb-2">{t('retirement.projection.taxFreeHint')}</p>
+      <ul className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-1">
+        {assets.map((asset) => (
+          <li key={asset.id}>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!taxFree[asset.id]}
+                onChange={(e) => onToggle(asset.id, e.target.checked)}
+                className="size-4 accent-primary shrink-0"
+                aria-label={t('retirement.projection.taxFreeFor', { name: asset.name })}
+              />
+              <span className="min-w-0 flex-1 truncate">{asset.name}</span>
+              {asset.costBasis === undefined && <span className="text-[10px] text-muted-foreground shrink-0">{t('retirement.projection.noBasis')}</span>}
+            </label>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

@@ -86,6 +86,14 @@ export function buildReport(input: ReportInput): Report {
       label: t('retirement.projection.sellStrategy'),
       value: a.sellStrategy === 'ordered' ? t('retirement.projection.strategyOrdered') : t('retirement.projection.strategyProRata'),
     },
+    ...(a.taxIncomePercent || a.taxAssetIncomePercent || a.taxGainsPercent
+      ? [
+          { label: t('retirement.projection.taxIncome'), value: pct(a.taxIncomePercent ?? 0) },
+          { label: t('retirement.projection.taxAssetIncome'), value: pct(a.taxAssetIncomePercent ?? 0) },
+          { label: t('retirement.projection.taxGains'), value: pct(a.taxGainsPercent ?? 0) },
+        ]
+      : []),
+    ...(a.bufferYears ? [{ label: t('retirement.projection.bufferYears'), value: `${a.bufferYears} ${t('retirement.projection.yearsSuffix')}` }] : []),
   ]
 
   const sellFrom = assets.filter((x) => x.drawable && x.value > 0).sort((x, y) => y.value - x.value)
