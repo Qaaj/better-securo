@@ -1,3 +1,4 @@
+import { newId } from '@/lib/id'
 import { isProposalData, isProposalToolName } from '@/lib/agent-proposals'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ShellLogo } from '@/components/shell-logo'
@@ -131,7 +132,7 @@ export function ChatPanel({ agent, conversationId, onConversationCreated, focusS
     // can ask the backend to generate a real title from the LLM after
     // streaming completes successfully.
     const startedFresh = !conversationId
-    const localId = crypto.randomUUID()
+    const localId = newId()
     setPendingUser({ id: 'pending-user-' + localId, role: 'user', text: trimmed, tools: [] })
     setDraft({ id: 'draft-' + localId, role: 'assistant', text: '', tools: [], pending: true })
     try {
