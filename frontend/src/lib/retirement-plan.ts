@@ -44,6 +44,7 @@ export const DEFAULT_PLAN: Plan = {
   taxFree: {},
 }
 export const PLAN_KEY = 'retirement:plan'
+export const SIM_KEY = 'retirement:simulation'
 export { SCENARIOS_KEY }
 
 export function read<T>(key: string, fallback: T): T {

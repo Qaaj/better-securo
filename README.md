@@ -119,7 +119,7 @@ The **Retirement** tab sits under Analysis.
 - **Temporary assets:** hypothetical assets ("more bonds") with an amount, growth, yield and an optional year they arrive. They live in the plan only and never touch your real assets.
 - **Views:** hover a year to see every asset's value, income by kind, outgoings, what was sold and any shortfall; switch the chart between Total, By asset and Table (a row per year, a column per asset).
 - **Saved plans:** name and save a whole setup, such as "without the mortgage", and reload it.
-- **Export:** Markdown, or a print-ready page for *Save as PDF* with the chart and the full table.
+- **Export:** Markdown, a print-ready page for *Save as PDF*, or a **Full report (HTML)**: one self-contained page with the projection charts (hover a year for the numbers), the settings used, a year-by-year breakdown of which assets are sold and for how much, the assets you do not sell from, and the stress test (success rate, fan chart, resilience grid, buffer comparison and its settings).
 
 **Simulate** stress-tests the plan from the Projection tab. Instead of one steady growth rate and inflation rate, it runs many random futures through the same engine, so your income, costs, what-ifs and selling order all apply:
 

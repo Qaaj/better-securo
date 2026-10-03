@@ -250,6 +250,9 @@ export interface SweepCell {
   successRate: number
 }
 
+/** Futures run for each cell of the resilience grid and the buffer comparison. */
+export const SWEEP_RUNS = 300
+
 export const SWEEP_SPEND = [0.8, 0.9, 1, 1.1, 1.25, 1.5]
 export const SWEEP_CRASH = [0, 5, 10, 15, 25]
 
