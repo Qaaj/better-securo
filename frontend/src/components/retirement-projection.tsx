@@ -399,7 +399,7 @@ function Assumptions({ plan, setAssumption, thisYear }: { plan: Plan; setAssumpt
   const { t } = useTranslation()
   const uid = useId()
   const a = plan.assumptions
-  const number = (key: 'horizonYears' | 'inflationPercent' | 'taxIncomePercent' | 'taxAssetIncomePercent' | 'taxGainsPercent' | 'bufferYears', label: string, suffix: string, min: number, max: number) => (
+  const number = (key: 'horizonYears' | 'inflationPercent' | 'taxIncomePercent' | 'taxAssetIncomePercent' | 'taxRentPercent' | 'taxGainsPercent' | 'bufferYears', label: string, suffix: string, min: number, max: number) => (
     <div className="space-y-1.5">
       <Label htmlFor={`${uid}-${key}`} className="text-xs">{label}</Label>
       <div className="relative">
@@ -483,9 +483,10 @@ function Assumptions({ plan, setAssumption, thisYear }: { plan: Plan; setAssumpt
       </label>
       <p className="text-xs font-medium text-muted-foreground mt-4 mb-1">{t('retirement.projection.taxes')}</p>
       <p className="text-[11px] text-muted-foreground mb-2">{t('retirement.projection.taxesHint')}</p>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {number('taxIncomePercent', t('retirement.projection.taxIncome'), '%', 0, 80)}
         {number('taxAssetIncomePercent', t('retirement.projection.taxAssetIncome'), '%', 0, 80)}
+        {number('taxRentPercent', t('retirement.projection.taxRent'), '%', 0, 80)}
         {number('taxGainsPercent', t('retirement.projection.taxGains'), '%', 0, 80)}
         {number('bufferYears', t('retirement.projection.bufferYears'), t('retirement.projection.yearsSuffix'), 0, 10)}
       </div>
