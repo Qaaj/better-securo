@@ -71,11 +71,11 @@ export function RetirementSimulator({
 
   // The plan made on the Projection tab, with its what-ifs, is what gets simulated.
   const plan = useMemo(() => read(PLAN_KEY, DEFAULT_PLAN), [])
-  const { projectionAssets, base } = useMemo(
+  const { projectionAssets, base, whatIfs } = useMemo(
     () => buildProjectionInputs(plan, items, assets, currency, excluded),
     [plan, items, assets, currency, excluded],
   )
-  const input = useMemo(() => ({ ...base, whatIfs: plan.whatIfs }), [base, plan.whatIfs])
+  const input = useMemo(() => ({ ...base, whatIfs }), [base, whatIfs])
   const types = useMemo(() => Object.fromEntries(assets.map((a) => [a.id, a.type])), [assets])
   const horizon = plan.assumptions.horizonYears
   const thisYear = new Date().getFullYear()

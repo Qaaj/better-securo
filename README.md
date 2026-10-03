@@ -53,7 +53,7 @@ The compose file is a development setup: your `backend/` and `frontend/` folders
 - Auto-categorization rules engine, plus **LLM-assisted categorization** with a model running on your own machine
 - Recurring transactions that **forecast instead of cluttering the ledger**, and a one-click "Make recurring" on any transaction that works out the frequency for you
 - Asset management with valuation tracking, growth rules and **modelled income** (yields, rentals, planned sales)
-- A **Retirement** tab: passive income against outgoings, a year-by-year projection with runway, drawdown years, selling order, what-ifs, a Monte Carlo stress test with crashes and uneven inflation, and export to Markdown or PDF
+- A **Retirement** tab: passive income against outgoings, a year-by-year projection with runway, drawdown years, selling order, what-ifs, per-line taxes, a Monte Carlo stress test with crashes and uneven inflation, and export to Markdown or PDF
 - Reports: Net Worth and Income vs Expenses with category sparklines
 - Bank sync via providers (Pluggy for Brazilian banks, Enable Banking for ~2500 European PSD2 banks, SimpleFIN for US and international banks, extensible)
 - Multi-currency support with automatic FX conversion
@@ -113,7 +113,7 @@ The **Retirement** tab sits under Analysis.
 - **Selling order:** sell in proportion to value, or in your own order.
 - **What-ifs:** an extra monthly cost or income over a span of years, a one-off amount, selling an asset in a given year (value less fees joins the pool, its rent stops), or spending a fixed amount instead of your recurring costs.
 - **Inflation per line:** choose which income and cost lines rise with inflation, so a fixed mortgage payment or a fixed rent can stay the same. What-if amounts have the same tickbox.
-- **Taxes:** optional rates on income (recurring credits such as a salary or pension), on yields (dividends and interest), on rent (its own rate, so untaxed rent can stay at 0), and on the gain when you sell. Each asset keeps a cost basis from its purchase price (without one, only growth from today is taxed), a sale is sized so what arrives after tax covers the cost, and any asset can be marked tax free.
+- **Taxes (own tab):** the **Tax** tab lists every line the plan counts and lets you set a rate for each: recurring income, income what-ifs, each asset's yield, each asset's rent, and each asset's gains when sold. A blank rate uses the default for its kind (income, yields, rent, gains), and 0 means untaxed. Each asset keeps a cost basis from its purchase price (without one, only growth from today is taxed), and a sale is sized so that what arrives after tax covers the cost. Summaries show tax over the horizon, as a share of money received, today's tax per year, the heaviest year, tax by kind each year, and a year-by-year table.
 - **Lines that end:** give a cost or income a last year, such as when a mortgage is paid off or a rental stops; it drops out of the totals after that.
 - **Cash buffer:** hold some years of costs in cash from the first drawdown year, spend it first, and refill it only after a year in which the other assets did not fall.
 - **Temporary assets:** hypothetical assets ("more bonds") with an amount, growth, yield and an optional year they arrive. They live in the plan only and never touch your real assets.

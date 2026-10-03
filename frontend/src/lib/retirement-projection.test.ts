@@ -435,3 +435,37 @@ describe('deflator', () => {
     expect(p.rows[2].deflator).toBeCloseTo(1.331)
   })
 })
+
+describe('tax rates per line', () => {
+  it('lets a yield, a rent and a gain have their own rate over the default', () => {
+    const fund: ProjectionAsset = { id: 'f', name: 'Fund', value: 100_000, drawable: false, yieldPercent: 5, yieldTaxPercent: 10 }
+    const flat: ProjectionAsset = { id: 'h', name: 'House', value: 1, drawable: false, fixedMonthly: 1_000, rentTaxPercent: 40 }
+    const p = run({ assets: [fund, flat], assumptions: { taxAssetIncomePercent: 30, taxRentPercent: 5, horizonYears: 1 } })
+    expect(p.rows[0].taxKinds.yield).toBeCloseTo(500)
+    expect(p.rows[0].taxKinds.rent).toBeCloseTo(4_800)
+    expect(p.rows[0].tax).toBeCloseTo(5_300)
+  })
+
+  it('taxes one income line at its own rate and the rest at the default', () => {
+    const own = { id: 'a', kind: 'income' as const, label: 'a', monthly: 1_000, fromYear: 0, inflates: false, taxPercent: 0 }
+    const p = run({ recurringIncomeMonthly: 1_000, assets: [pool(0)], timed: [own], assumptions: { taxIncomePercent: 20, horizonYears: 1 } })
+    expect(p.rows[0].taxKinds.income).toBeCloseTo(2_400)
+  })
+
+  it('uses an asset own gains rate, and splits the tax by kind', () => {
+    const fund = pool(100_000, { costBasis: 0, gainsTaxPercent: 10 })
+    const p = run({ assets: [fund], outgoingMonthly: 900, assumptions: { taxGainsPercent: 30, taxIncomePercent: 5, horizonYears: 1 } })
+    // 10% on a sale that is all gain: 90% arrives.
+    expect(p.rows[0].drawn.p).toBeCloseTo(12_000)
+    expect(p.rows[0].taxKinds.gains).toBeCloseTo(1_200)
+    expect(p.rows[0].taxKinds.income).toBe(0)
+  })
+
+  it('splits tax so the kinds add up to the total', () => {
+    const p = run({ recurringIncomeMonthly: 500, assets: [pool(100_000, { costBasis: 20_000, yieldPercent: 3 })], outgoingMonthly: 1_000, assumptions: { taxIncomePercent: 20, taxAssetIncomePercent: 15, taxGainsPercent: 25, horizonYears: 5 } })
+    for (const row of p.rows) {
+      const k = row.taxKinds
+      expect(k.income + k.yield + k.rent + k.gains).toBeCloseTo(row.tax)
+    }
+  })
+})

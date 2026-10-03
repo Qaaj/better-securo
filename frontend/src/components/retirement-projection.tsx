@@ -78,11 +78,11 @@ export function RetirementProjection({
   const inputs = useMemo(
     () => buildProjectionInputs(plan, items, assets, currency, excluded),
     // The what-ifs only matter to the scenario below.
-    [plan.flat, plan.drawable, plan.growth, plan.sellOrder, plan.tempAssets, plan.assumptions, items, assets, currency, excluded], // eslint-disable-line react-hooks/exhaustive-deps
+    [plan.flat, plan.drawable, plan.growth, plan.sellOrder, plan.tempAssets, plan.assumptions, plan.lineEnd, plan.taxFree, plan.taxRates, plan.whatIfs, items, assets, currency, excluded], // eslint-disable-line react-hooks/exhaustive-deps
   )
-  const { summary, flatSet, projectionAssets, base } = inputs
+  const { summary, flatSet, projectionAssets, base, whatIfs: taxedWhatIfs } = inputs
   const baseline = useMemo(() => projectRetirement({ ...base, whatIfs: [] }), [base])
-  const scenario = useMemo(() => projectRetirement({ ...base, whatIfs: plan.whatIfs }), [base, plan.whatIfs])
+  const scenario = useMemo(() => projectRetirement({ ...base, whatIfs: taxedWhatIfs }), [base, taxedWhatIfs])
 
   const thisYear = new Date().getFullYear()
   const horizon = plan.assumptions.horizonYears
@@ -132,7 +132,7 @@ export function RetirementProjection({
     setPreparing(true)
     try {
       const params = read(SIM_KEY, DEFAULT_SIM)
-      const input = { ...base, whatIfs: plan.whatIfs }
+      const input = { ...base, whatIfs: taxedWhatIfs }
       const types = Object.fromEntries(assets.map((x) => [x.id, x.type]))
       const classOf = (id: string) => params.classes[id] ?? defaultRiskClass(types[id] ?? '')
       const result = simulate(input, params, types)
@@ -161,6 +161,11 @@ export function RetirementProjection({
           label: id.startsWith('asset:') ? names[id.split(':')[1]] ?? id : lineLabel(id),
           year,
         })),
+        taxLines: Object.entries(plan.taxRates ?? {}).map(([key, rate]) => {
+          const [kind, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)]
+          const label = kind === 'income' ? lineLabel(id) : kind === 'whatif' ? plan.whatIfs.find((w) => w.id === id)?.label ?? id : names[id] ?? id
+          return { label, kind: kind === 'whatif' ? 'income' : kind, rate }
+        }),
         simulation: {
           params,
           result,
@@ -352,12 +357,6 @@ export function RetirementProjection({
           onChangeTemp={(id, value) => setPlan({ ...plan, tempAssets: (plan.tempAssets ?? []).map((a) => (a.id === id ? { ...a, value } : a)) })}
           onRemoveTemp={(id) => setPlan({ ...plan, tempAssets: (plan.tempAssets ?? []).filter((a) => a.id !== id) })}
         />
-        <TaxFreeAssets
-          assets={projectionAssets.filter((a) => a.drawable && a.value > 0)}
-          taxFree={plan.taxFree ?? {}}
-          show={(plan.assumptions.taxGainsPercent ?? 0) > 0}
-          onToggle={(id, value) => setPlan({ ...plan, taxFree: { ...(plan.taxFree ?? {}), [id]: value } })}
-        />
         <WhatIfs
           whatIfs={plan.whatIfs}
           assets={projectionAssets}
@@ -399,7 +398,7 @@ function Assumptions({ plan, setAssumption, thisYear }: { plan: Plan; setAssumpt
   const { t } = useTranslation()
   const uid = useId()
   const a = plan.assumptions
-  const number = (key: 'horizonYears' | 'inflationPercent' | 'taxIncomePercent' | 'taxAssetIncomePercent' | 'taxRentPercent' | 'taxGainsPercent' | 'bufferYears', label: string, suffix: string, min: number, max: number) => (
+  const number = (key: 'horizonYears' | 'inflationPercent' | 'bufferYears', label: string, suffix: string, min: number, max: number) => (
     <div className="space-y-1.5">
       <Label htmlFor={`${uid}-${key}`} className="text-xs">{label}</Label>
       <div className="relative">
@@ -481,15 +480,11 @@ function Assumptions({ plan, setAssumption, thisYear }: { plan: Plan; setAssumpt
         <input type="checkbox" checked={a.incomeIndexed} onChange={(e) => setAssumption('incomeIndexed', e.target.checked)} className="size-4 accent-primary" />
         {t('retirement.projection.incomeIndexed')}
       </label>
-      <p className="text-xs font-medium text-muted-foreground mt-4 mb-1">{t('retirement.projection.taxes')}</p>
-      <p className="text-[11px] text-muted-foreground mb-2">{t('retirement.projection.taxesHint')}</p>
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {number('taxIncomePercent', t('retirement.projection.taxIncome'), '%', 0, 80)}
-        {number('taxAssetIncomePercent', t('retirement.projection.taxAssetIncome'), '%', 0, 80)}
-        {number('taxRentPercent', t('retirement.projection.taxRent'), '%', 0, 80)}
-        {number('taxGainsPercent', t('retirement.projection.taxGains'), '%', 0, 80)}
+      <p className="text-xs font-medium text-muted-foreground mt-4 mb-1">{t('retirement.projection.bufferTitle')}</p>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {number('bufferYears', t('retirement.projection.bufferYears'), t('retirement.projection.yearsSuffix'), 0, 10)}
       </div>
+      <p className="text-[11px] text-muted-foreground mt-2">{t('retirement.projection.taxMoved')}</p>
       <p className="text-[11px] text-muted-foreground mt-2">{t('retirement.projection.bufferHint')}</p>
     </div>
   )
@@ -580,45 +575,6 @@ function InflationLines({
         <TabsContent value="income" className="mt-3">{list(incomeRows, !incomeIndexed)}</TabsContent>
         <TabsContent value="costs" className="mt-3">{list(costRows, false)}</TabsContent>
       </Tabs>
-    </div>
-  )
-}
-
-/** Assets whose gains are left out of the tax, such as a tax-sheltered account. */
-function TaxFreeAssets({
-  assets,
-  taxFree,
-  show,
-  onToggle,
-}: {
-  assets: ProjectionAsset[]
-  taxFree: Record<string, boolean>
-  show: boolean
-  onToggle: (id: string, value: boolean) => void
-}) {
-  const { t } = useTranslation()
-  if (!show || assets.length === 0) return null
-  return (
-    <div>
-      <p className="text-xs font-medium text-muted-foreground">{t('retirement.projection.taxFreeTitle')}</p>
-      <p className="text-[11px] text-muted-foreground mb-2">{t('retirement.projection.taxFreeHint')}</p>
-      <ul className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-1">
-        {assets.map((asset) => (
-          <li key={asset.id}>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={!!taxFree[asset.id]}
-                onChange={(e) => onToggle(asset.id, e.target.checked)}
-                className="size-4 accent-primary shrink-0"
-                aria-label={t('retirement.projection.taxFreeFor', { name: asset.name })}
-              />
-              <span className="min-w-0 flex-1 truncate">{asset.name}</span>
-              {asset.costBasis === undefined && <span className="text-[10px] text-muted-foreground shrink-0">{t('retirement.projection.noBasis')}</span>}
-            </label>
-          </li>
-        ))}
-      </ul>
     </div>
   )
 }
