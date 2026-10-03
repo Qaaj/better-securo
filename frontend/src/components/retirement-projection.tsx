@@ -1,3 +1,4 @@
+import { newId } from '@/lib/id'
 import { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -657,7 +658,7 @@ function SpendFrom({
     const value = parseFloat(tempValue)
     if (Number.isNaN(value) || value <= 0) return
     onAddTemp({
-      id: crypto.randomUUID(),
+      id: newId(),
       name: tempName.trim() || t('retirement.projection.tempDefaultName'),
       value,
       growthPercent: parseFloat(tempGrowth) || 0,
@@ -811,7 +812,7 @@ function WhatIfs({
     kind === 'sell' ? Boolean(assetId) : Boolean(amount) && !Number.isNaN(parseFloat(amount))
 
   const add = () => {
-    const id = crypto.randomUUID()
+    const id = newId()
     const from = Math.max(0, parseInt(fromYear || '0', 10) || 0)
     let item: WhatIf
     if (kind === 'sell') {
