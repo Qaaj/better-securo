@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Area, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { buildProjectionInputs, read, write, DEFAULT_PLAN, PLAN_KEY } from '@/lib/retirement-plan'
+import { buildProjectionInputs, read, write, DEFAULT_PLAN, PLAN_KEY, SIM_KEY } from '@/lib/retirement-plan'
 import {
   DEFAULT_SIM,
   RISK_CLASSES,
   BUFFER_YEARS,
   SWEEP_CRASH,
+  SWEEP_RUNS,
   SWEEP_SPEND,
   defaultRiskClass,
   simulate,
@@ -23,8 +24,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { Asset, RecurringTransaction } from '@/types'
 
-const SIM_KEY = 'retirement:simulation'
-const SWEEP_RUNS = 300
 
 const tooltipStyle: React.CSSProperties = {
   background: 'var(--card)',

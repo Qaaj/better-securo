@@ -12,6 +12,7 @@ import {
   DEFAULT_PLAN,
   PLAN_KEY,
   SCENARIOS_KEY,
+  SIM_KEY,
   buildProjectionInputs,
   read,
   write,
@@ -21,6 +22,8 @@ import {
 import type { IncomeLine, OutgoingLine } from '@/lib/retirement'
 import { formatCurrency } from '@/lib/format'
 import { downloadText, printHtml } from '@/lib/download'
+import { buildFullReportHtml } from '@/lib/retirement-full-report'
+import { DEFAULT_SIM, SWEEP_RUNS, bufferSweep, defaultRiskClass, simulate, sweep } from '@/lib/retirement-simulation'
 import { buildReport, describeWhatIf, reportToHtml, reportToMarkdown } from '@/lib/retirement-report'
 import { AssetsChart, AssetsTable, type ChartMode } from '@/components/retirement-projection-charts'
 import { cn } from '@/lib/utils'
@@ -122,6 +125,55 @@ export function RetirementProjection({
   const stamp = () => new Date().toISOString().slice(0, 10)
   const exportMarkdown = () => downloadText(`retirement-plan-${stamp()}.md`, reportToMarkdown(makeReport()))
   const exportPdf = () => printHtml(reportToHtml(makeReport()))
+  const [preparing, setPreparing] = useState(false)
+  // The full report carries the stress test, so it is run here with the saved settings first.
+  const exportHtml = async () => {
+    setPreparing(true)
+    try {
+      const params = read(SIM_KEY, DEFAULT_SIM)
+      const input = { ...base, whatIfs: plan.whatIfs }
+      const types = Object.fromEntries(assets.map((x) => [x.id, x.type]))
+      const classOf = (id: string) => params.classes[id] ?? defaultRiskClass(types[id] ?? '')
+      const result = simulate(input, params, types)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const grid = await sweep(input, params, types, SWEEP_RUNS)
+      const buffers = await bufferSweep(input, params, types, SWEEP_RUNS)
+      const lineLabel = (id: string) => summary.outgoing.find((l) => l.item.id === id)?.item.description ?? summary.income.find((l) => l.id === id)?.label ?? id
+      const html = buildFullReportHtml({
+        t: t as unknown as Parameters<typeof buildReport>[0]['t'],
+        currency,
+        locale,
+        now: new Date(),
+        assumptions: plan.assumptions,
+        whatIfs: plan.whatIfs,
+        scenario,
+        baseline,
+        assets: projectionAssets,
+        fixedLines: makeReport().fixed.length
+          ? [
+              ...summary.outgoing.filter((l) => !excluded.has(l.item.id) && flatSet.has(l.item.id)).map((l) => ({ label: l.item.description, monthly: l.monthly })),
+              ...summary.income.filter((l) => l.kind === 'recurring' && !excluded.has(l.id) && flatSet.has(l.id)).map((l) => ({ label: l.label, monthly: l.monthly })),
+              ...projectionAssets.filter((x) => x.fixedFlat && x.fixedMonthly).map((x) => ({ label: x.name, monthly: x.fixedMonthly ?? 0 })),
+            ]
+          : [],
+        endedLines: Object.entries(plan.lineEnd ?? {}).map(([id, year]) => ({
+          label: id.startsWith('asset:') ? names[id.split(':')[1]] ?? id : lineLabel(id),
+          year,
+        })),
+        simulation: {
+          params,
+          result,
+          grid,
+          buffers,
+          behaviour: projectionAssets.filter((x) => x.drawable && x.value > 0).map((x) => ({ name: x.name, riskClass: classOf(x.id) })),
+          runsPerCell: SWEEP_RUNS,
+        },
+      })
+      downloadText(`retirement-report-${stamp()}.html`, html, 'text/html;charset=utf-8')
+    } finally {
+      setPreparing(false)
+    }
+  }
   const saveScenario = () => {
     const name = scenarioName.trim()
     if (!name) return
@@ -175,6 +227,9 @@ export function RetirementProjection({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={preparing} onSelect={() => void exportHtml()}>
+                {preparing ? t('retirement.fullReport.preparing') : t('retirement.fullReport.exportHtml')}
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={exportPdf}>{t('retirement.projection.exportPdf')}</DropdownMenuItem>
               <DropdownMenuItem onSelect={exportMarkdown}>{t('retirement.projection.exportMarkdown')}</DropdownMenuItem>
             </DropdownMenuContent>
