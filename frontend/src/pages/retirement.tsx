@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RetirementProjection } from '@/components/retirement-projection'
 import { write } from '@/lib/retirement-plan'
 import { loadFromServer } from '@/lib/retirement-sync'
+import { RetirementTax } from '@/components/retirement-tax'
 import { RetirementSimulator } from '@/components/retirement-simulator'
 
 const EXCLUDED_KEY = 'retirement:excluded-income'
@@ -56,7 +57,7 @@ function RetirementContent() {
   const [excluded, setExcluded] = useState<Set<string>>(loadExcluded)
   const [params, setParams] = useSearchParams()
   const requested = params.get('tab')
-  const tab = requested === 'projection' || requested === 'simulate' ? requested : 'overview'
+  const tab = requested === 'projection' || requested === 'tax' || requested === 'simulate' ? requested : 'overview'
 
   const { data: items, isLoading } = useQuery({
     queryKey: ['recurring'],
@@ -100,6 +101,7 @@ function RetirementContent() {
         <TabsList className="mb-4">
           <TabsTrigger value="overview">{t('retirement.tabOverview')}</TabsTrigger>
           <TabsTrigger value="projection">{t('retirement.tabProjection')}</TabsTrigger>
+          <TabsTrigger value="tax">{t('retirement.tabTax')}</TabsTrigger>
           <TabsTrigger value="simulate">{t('retirement.tabSimulate')}</TabsTrigger>
         </TabsList>
 
@@ -176,6 +178,10 @@ function RetirementContent() {
           </p>
           <RetirementProjection items={items ?? []} assets={assetList ?? []} excluded={excluded} currency={currency} locale={locale} />
 
+        </TabsContent>
+
+        <TabsContent value="tax">
+          <RetirementTax items={items ?? []} assets={assetList ?? []} excluded={excluded} currency={currency} locale={locale} />
         </TabsContent>
 
         <TabsContent value="simulate">

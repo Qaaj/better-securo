@@ -37,6 +37,7 @@ async function report(withSim: boolean) {
     assets: [stocks, house],
     fixedLines: [],
     endedLines: [{ label: 'Loan', year: 2030 }],
+    taxLines: [{ label: 'Index fund', kind: 'gains', rate: 10 }],
     simulation,
   })
 }
@@ -49,6 +50,8 @@ describe('full retirement report', () => {
     expect(html).toContain('Index fund')
     expect(html).toContain('House')
     expect(html).toContain('Loan: counts until the end of 2030')
+    expect(html).toContain('id="tax"')
+    expect(html).toContain('Index fund (Gains on selling): 10%')
     expect(html).toContain('Where is it resilient?')
     expect(html).toContain('What is a cash buffer worth?')
     expect(html).toContain('<svg')

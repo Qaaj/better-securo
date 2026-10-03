@@ -47,6 +47,10 @@ export interface ProjectionAsset {
   costBasis?: number
   /** Gains on selling it are not taxed. */
   taxFree?: boolean
+  /** Own tax rates, percent; unset uses the plan's default for that kind. */
+  yieldTaxPercent?: number
+  rentTaxPercent?: number
+  gainsTaxPercent?: number
 }
 
 export interface Assumptions {
@@ -74,7 +78,7 @@ export interface Assumptions {
 
 export type WhatIf =
   /** `inflates: false` keeps the amount the same instead of rising with inflation (default: it rises). */
-  | { id: string; kind: 'income' | 'expense'; label: string; monthly: number; fromYear: number; toYear?: number; inflates?: boolean }
+  | { id: string; kind: 'income' | 'expense'; label: string; monthly: number; fromYear: number; toYear?: number; inflates?: boolean; /** Own tax rate on an income, percent; unset uses the plan's income rate. */ taxPercent?: number }
   | { id: string; kind: 'oneoff'; label: string; amount: number; year: number }
   | { id: string; kind: 'sell'; label: string; assetId: string; year: number; feesPercent: number }
   /** From this year on, spend this much a month (today's money) instead of the recurring outgoings. */
@@ -132,6 +136,8 @@ export interface YearRow {
   unfunded: number
   /** Income tax, tax on asset income and on gains from sales this year. */
   tax: number
+  /** The same tax split by where it came from. */
+  taxKinds: { income: number; yield: number; rent: number; gains: number }
   /** What prices at the end of this year are against today's (1 = no inflation). */
   deflator: number
 }
@@ -164,10 +170,7 @@ export function projectRetirement(input: ProjectionInput): Projection {
   const inflation = a.inflationPercent / 100
   const startYear = a.drawdownStartYear ?? 0
   const ordered = a.sellStrategy === 'ordered'
-  const incomeTax = (a.taxIncomePercent ?? 0) / 100
-  const assetIncomeTax = (a.taxAssetIncomePercent ?? 0) / 100
-  const rentTax = (a.taxRentPercent ?? 0) / 100
-  const gainsTax = (a.taxGainsPercent ?? 0) / 100
+  const incomeTaxDefault = (a.taxIncomePercent ?? 0) / 100
   const bufferYears = a.bufferYears ?? 0
   // Prices at the start of each year against today's: fixed rate, or the simulated path compounded.
   const priceLevel: number[] = [1]
@@ -191,12 +194,13 @@ export function projectRetirement(input: ProjectionInput): Projection {
   const ownedTotal = () => holdings.filter((h) => h.held).reduce((sum, h) => sum + h.value, 0)
 
   /** Share of a sale that is gain, for the tax. */
+  const gainsRate = (h: Holding) => (h.taxFree ? 0 : (h.gainsTaxPercent ?? a.taxGainsPercent ?? 0) / 100)
   const gainShare = (h: Holding) => (h.taxFree || h.value <= 0 ? 0 : Math.max(0, 1 - h.basis / h.value))
-  const keepAfterTax = (h: Holding) => 1 - gainShare(h) * gainsTax
+  const keepAfterTax = (h: Holding) => 1 - gainShare(h) * gainsRate(h)
 
   /** Take `gross` out of an asset, shrinking its cost basis in proportion; returns the tax on the gain. */
   function take(h: Holding, gross: number): number {
-    const tax = gross * gainShare(h) * gainsTax
+    const tax = gross * gainShare(h) * gainsRate(h)
     h.basis -= h.value > 0 ? (h.basis * gross) / h.value : 0
     h.value -= gross
     return tax
@@ -254,7 +258,8 @@ export function projectRetirement(input: ProjectionInput): Projection {
     for (const h of holdings) if (!h.held && h.startYear === year) h.held = true
 
     let income = input.recurringIncomeMonthly * 12 * incomeInflate + (input.recurringIncomeFlatMonthly ?? 0) * 12
-    let taxableIncome = income
+    // Tax on income: the plain recurring income at the default rate, lines with their own rate as they come.
+    let incomeTaxDue = income * incomeTaxDefault
     let outgoingMonthly = input.outgoingMonthly
     let outgoingFlatMonthly = input.outgoingFlatMonthly ?? 0
     let spending = false
@@ -271,7 +276,7 @@ export function projectRetirement(input: ProjectionInput): Projection {
     let assetIncome = 0
     let saleIncome = 0
     // Tax that has to be paid out of the year's cash flow.
-    let payableTax = 0
+    let gainsDue = 0
     // Tax already withheld from sales that were made to raise cash.
     let withheldTax = 0
 
@@ -279,7 +284,7 @@ export function projectRetirement(input: ProjectionInput): Projection {
       if (w.kind === 'income' && active(w, year)) {
         const amount = w.monthly * 12 * (w.inflates === false ? 1 : incomeInflate)
         income += amount
-        taxableIncome += amount
+        incomeTaxDue += amount * (w.taxPercent !== undefined ? w.taxPercent / 100 : incomeTaxDefault)
       }
       if (w.kind === 'expense' && active(w, year)) {
         // A spending what-if replaces the recurring costs, including lines that end part-way.
@@ -294,7 +299,7 @@ export function projectRetirement(input: ProjectionInput): Projection {
         if (asset) {
           const proceeds = asset.value * (1 - w.feesPercent / 100)
           oneOffs += proceeds
-          if (!asset.taxFree) payableTax += Math.max(0, proceeds - asset.basis) * gainsTax
+          gainsDue += Math.max(0, proceeds - asset.basis) * gainsRate(asset)
           asset.value = 0
           asset.basis = 0
           asset.held = false
@@ -304,20 +309,30 @@ export function projectRetirement(input: ProjectionInput): Projection {
 
     let yieldIncome = 0
     let rentIncome = 0
+    let yieldTaxDue = 0
+    let rentTaxDue = 0
     for (const h of holdings) {
       if (!h.held || h.value <= 0) continue
-      if (h.yieldPercent) yieldIncome += (h.value * h.yieldPercent) / 100
-      if (h.fixedMonthly && (h.fixedUntilYear === undefined || year <= h.fixedUntilYear)) rentIncome += h.fixedMonthly * 12 * (h.fixedFlat ? 1 : incomeInflate)
+      if (h.yieldPercent) {
+        const paid = (h.value * h.yieldPercent) / 100
+        yieldIncome += paid
+        yieldTaxDue += paid * (h.yieldTaxPercent ?? a.taxAssetIncomePercent ?? 0) / 100
+      }
+      if (h.fixedMonthly && (h.fixedUntilYear === undefined || year <= h.fixedUntilYear)) {
+        const rent = h.fixedMonthly * 12 * (h.fixedFlat ? 1 : incomeInflate)
+        rentIncome += rent
+        rentTaxDue += rent * (h.rentTaxPercent ?? a.taxRentPercent ?? 0) / 100
+      }
       if (h.sellPercent && h.drawable) {
         const sold = Math.min(h.value, (h.value * h.sellPercent) / 100)
-        payableTax += sold * gainShare(h) * gainsTax
+        gainsDue += sold * gainShare(h) * gainsRate(h)
         take(h, sold)
         saleIncome += sold
       }
     }
     assetIncome = yieldIncome + rentIncome
     income += assetIncome + saleIncome
-    payableTax += taxableIncome * incomeTax + yieldIncome * assetIncomeTax + rentIncome * rentTax
+    const payableTax = incomeTaxDue + yieldTaxDue + rentTaxDue + gainsDue
 
     const netFlow = income + oneOffs - outgoing - payableTax
     const phase: Phase =
@@ -404,6 +419,7 @@ export function projectRetirement(input: ProjectionInput): Projection {
     for (const h of holdings) if (h.held && h.value > 0.005) byAsset[h.id] = h.value
 
     const yearTax = payableTax + withheldTax
+    const taxKinds = { income: incomeTaxDue, yield: yieldTaxDue, rent: rentTaxDue, gains: gainsDue + withheldTax }
     totalTax += yearTax
     rows.push({
       year,
@@ -419,6 +435,7 @@ export function projectRetirement(input: ProjectionInput): Projection {
       netFlow,
       unfunded,
       tax: yearTax,
+      taxKinds,
       deflator: priceLevel[year + 1],
     })
   }

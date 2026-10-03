@@ -28,8 +28,13 @@ export interface Plan {
   whatIfs: WhatIf[]
   /** The last calendar year a recurring line (or `asset:<id>:income`) counts; unset means it never stops. */
   lineEnd?: Record<string, number>
-  /** Assets whose gains are not taxed when sold. */
+  /** Assets whose gains are not taxed when sold (older plans; a 0% rate on the Tax tab does the same). */
   taxFree?: Record<string, boolean>
+  /**
+   * Tax rate, percent, for one line; a line without one uses the plan's default for its kind. Keys:
+   * `income:<recurring id>`, `yield:<asset id>`, `rent:<asset id>`, `gains:<asset id>`, `whatif:<what-if id>`.
+   */
+  taxRates?: Record<string, number>
 }
 
 export const DEFAULT_PLAN: Plan = {
@@ -42,6 +47,7 @@ export const DEFAULT_PLAN: Plan = {
   whatIfs: [],
   lineEnd: {},
   taxFree: {},
+  taxRates: {},
 }
 export const PLAN_KEY = 'retirement:plan'
 export const SIM_KEY = 'retirement:simulation'
@@ -83,14 +89,19 @@ export function buildProjectionInputs(
   const recurringIncome = summary.income.filter((l) => l.kind === 'recurring' && !excluded.has(l.id))
   const countedOutgoing = summary.outgoing.filter((l) => !excluded.has(l.item.id))
   const open = <T,>(list: T[], idOf: (item: T) => string) => list.filter((l) => !ends(idOf(l)))
-  const recurringIncomeMonthly = sum(open(recurringIncome, (l) => l.id).filter((l) => !flatSet.has(l.id)))
-  const recurringIncomeFlatMonthly = sum(open(recurringIncome, (l) => l.id).filter((l) => flatSet.has(l.id)))
+  const rates = plan.taxRates ?? {}
+  // An income line with an end year or its own tax rate is handled on its own.
+  const solo = (id: string) => ends(id) || rates[`income:${id}`] !== undefined
+  const plainIncome = recurringIncome.filter((l) => !solo(l.id))
+  const recurringIncomeMonthly = sum(plainIncome.filter((l) => !flatSet.has(l.id)))
+  const recurringIncomeFlatMonthly = sum(plainIncome.filter((l) => flatSet.has(l.id)))
   const outgoingMonthly = sum(open(countedOutgoing, (l) => l.item.id).filter((l) => !flatSet.has(l.item.id)))
   const outgoingFlatMonthly = sum(open(countedOutgoing, (l) => l.item.id).filter((l) => flatSet.has(l.item.id)))
   // Lines with an end year are kept out of the totals and handled on their own.
   const timed: NonNullable<ProjectionInput['timed']> = [
-    ...recurringIncome.filter((l) => ends(l.id)).map((l) => ({
-      id: l.id, kind: 'income' as const, label: l.label, monthly: l.monthly, fromYear: 0, toYear: lineEnd[l.id] - thisYear, inflates: !flatSet.has(l.id),
+    ...recurringIncome.filter((l) => solo(l.id)).map((l) => ({
+      id: l.id, kind: 'income' as const, label: l.label, monthly: l.monthly, fromYear: 0,
+      toYear: ends(l.id) ? lineEnd[l.id] - thisYear : undefined, inflates: !flatSet.has(l.id), taxPercent: rates[`income:${l.id}`],
     })),
     ...countedOutgoing.filter((l) => ends(l.item.id)).map((l) => ({
       id: l.item.id, kind: 'expense' as const, label: l.item.description, monthly: l.monthly, fromYear: 0, toYear: lineEnd[l.item.id] - thisYear, inflates: !flatSet.has(l.item.id),
@@ -117,6 +128,9 @@ export function buildProjectionInputs(
         fixedFlat: flatSet.has(`asset:${asset.id}:income`) || undefined,
         fixedUntilYear: ends(`asset:${asset.id}:income`) ? lineEnd[`asset:${asset.id}:income`] - thisYear : undefined,
         costBasis: assetCostBasis(asset, currency) ?? undefined,
+        yieldTaxPercent: rates[`yield:${asset.id}`],
+        rentTaxPercent: rates[`rent:${asset.id}`],
+        gainsTaxPercent: rates[`gains:${asset.id}`],
         taxFree: plan.taxFree?.[asset.id] || undefined,
         sellPercent: asset.sell_percent_per_year && !excluded.has(`asset:${asset.id}:sale`) ? asset.sell_percent_per_year : undefined,
       })
@@ -133,6 +147,8 @@ export function buildProjectionInputs(
         temporary: true,
         startYear: temp.fromYear || undefined,
         taxFree: plan.taxFree?.[temp.id] || undefined,
+        yieldTaxPercent: rates[`yield:${temp.id}`],
+        gainsTaxPercent: rates[`gains:${temp.id}`],
       })
     }
     return list
@@ -140,5 +156,8 @@ export function buildProjectionInputs(
 
   const base: Omit<ProjectionInput, 'whatIfs'> = { recurringIncomeMonthly, recurringIncomeFlatMonthly, outgoingMonthly, outgoingFlatMonthly, assets: projectionAssets, assumptions: plan.assumptions, timed }
 
-  return { summary, flatSet, projectionAssets, base }
+  // Income what-ifs carry the tax rate typed for them.
+  const whatIfs = plan.whatIfs.map((w) => (w.kind === 'income' && rates[`whatif:${w.id}`] !== undefined ? { ...w, taxPercent: rates[`whatif:${w.id}`] } : w))
+
+  return { summary, flatSet, projectionAssets, base, whatIfs }
 }

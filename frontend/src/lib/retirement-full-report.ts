@@ -41,6 +41,8 @@ export interface FullReportInput {
   fixedLines: { label: string; monthly: number }[]
   /** Lines with a last year, as a label and the calendar year. */
   endedLines: { label: string; year: number }[]
+  /** Tax rates set for a single line, by kind (income, yield, rent, gains). */
+  taxLines: { label: string; kind: string; rate: number }[]
   simulation: SimulationSection | null
 }
 
@@ -315,6 +317,25 @@ export function buildFullReportHtml(input: FullReportInput): string {
     : null
   const unfundedYear = rows.find((x) => x.unfunded > 0.5)
 
+  // ---- tax
+  const kinds = ['income', 'yield', 'rent', 'gains'] as const
+  const kindTotals = Object.fromEntries(kinds.map((k) => [k, rows.reduce((sum, row) => sum + row.taxKinds[k], 0)])) as Record<(typeof kinds)[number], number>
+  const taxTable: ReportTable | null =
+    scenario.totalTax > 0.5
+      ? {
+          headers: [t('retirement.projection.tableYear'), ...kinds.map((k) => t(`retirement.tax.kind_${k}`)), t('retirement.projection.tableTotal'), t('retirement.tax.shareShort')],
+          rows: [
+            ...rows.map((row) => [
+              String(thisYear + row.year),
+              ...kinds.map((k) => dash(row.taxKinds[k])),
+              dash(row.tax),
+              row.income > 0 && row.tax > 0.5 ? pct(row.tax / row.income) : '–',
+            ]),
+            [r('totals'), ...kinds.map((k) => dash(kindTotals[k])), dash(scenario.totalTax), rows.reduce((sum, x) => sum + x.income, 0) > 0 ? pct(scenario.totalTax / rows.reduce((sum, x) => sum + x.income, 0)) : '–'],
+          ],
+        }
+      : null
+
   // ---- the rest
   const otherTable: ReportTable | null = otherIds.length
     ? {
@@ -395,6 +416,7 @@ export function buildFullReportHtml(input: FullReportInput): string {
     ['summary', base.labels.summary],
     ['projection', r('projection')],
     ['settings', r('settings')],
+    ...(taxTable ? ([['tax', r('tax')]] as const) : []),
     ['sold', r('sold')],
     ['others', r('others')],
     ['simulation', r('simulation')],
@@ -439,7 +461,10 @@ svg { background: #fff; border-radius: 8px; }
 <h3>${esc(base.labels.whatIfs)}</h3>${list(base.whatIfs.length ? base.whatIfs : [base.labels.none])}
 ${input.endedLines.length ? `<h3>${esc(r('endedLines'))}</h3>${list(input.endedLines.map((l) => `${l.label}: ${r('countsUntil', { year: l.year })}`))}` : ''}
 ${base.fixed.length ? `<h3>${esc(base.labels.fixed)}</h3>${list(base.fixed)}` : ''}
+${input.taxLines.length ? `<h3>${esc(r('taxLines'))}</h3>${list(input.taxLines.map((l) => `${l.label} (${t(`retirement.tax.kind_${l.kind}`)}): ${Number(l.rate.toFixed(2))}%`))}` : ''}
 <h3>${esc(base.labels.assets)}</h3>${table(settingsAssets)}</section>
+
+${taxTable ? `<section id="tax"><h2>${esc(r('tax'))}</h2><p class="muted">${esc(r('taxHint'))}</p>${table(taxTable, { totalRow: true })}</section>` : ''}
 
 <section id="sold"><h2>${esc(r('sold'))}</h2>
 ${
