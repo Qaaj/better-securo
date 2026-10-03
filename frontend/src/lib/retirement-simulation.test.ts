@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { projectRetirement, type ProjectionInput } from './retirement-projection'
-import { DEFAULT_SIM, defaultRiskClass, makeRng, scaleSpending, simulate, type SimParams } from './retirement-simulation'
+import { BUFFER_YEARS, DEFAULT_SIM, bufferSweep, defaultRiskClass, makeRng, scaleSpending, simulate, type SimParams } from './retirement-simulation'
 
 function plan(over: Partial<ProjectionInput> = {}): ProjectionInput {
   return {
@@ -20,15 +20,15 @@ describe('retirement simulation', () => {
     const noisy = { ...DEFAULT_SIM, runs: 200, classes: { a: 'stocks' as const } }
     expect(simulate(plan(), noisy)).toEqual(simulate(plan(), noisy))
     const rich = plan({ assets: [{ id: 'a', name: 'Stocks', value: 3_000_000, drawable: true, growthPercent: 5 }] })
-    expect(simulate(rich, { ...noisy, seed: 2 }).medianEnd).not.toBe(simulate(rich, noisy).medianEnd)
+    expect(simulate(rich, { ...noisy, seed: 2 }).nominal.medianEnd).not.toBe(simulate(rich, noisy).nominal.medianEnd)
   })
 
   it('matches the plain projection when nothing is random', () => {
     const result = simulate(plan(), calm)
     const straight = projectRetirement(plan())
     expect(result.successRate).toBe(straight.runwayYears === null ? 1 : 0)
-    expect(result.medianEnd).toBeCloseTo(straight.rows[29].drawable, 0)
-    expect(result.bands[29].p10).toBeCloseTo(result.bands[29].p90, 6)
+    expect(result.nominal.medianEnd).toBeCloseTo(straight.rows[29].drawable, 0)
+    expect(result.nominal.bands[29].p10).toBeCloseTo(result.nominal.bands[29].p90, 6)
   })
 
   it('succeeds less often when crashes are likely and when spending is higher', () => {
@@ -42,7 +42,7 @@ describe('retirement simulation', () => {
 
   it('does not shock assets treated as fixed', () => {
     const fixed = simulate(plan(), { ...DEFAULT_SIM, runs: 100, crashChancePercent: 50, classes: { a: 'fixed' }, inflationSpread: 0, spikeChancePercent: 0 })
-    expect(fixed.bands[29].p10).toBeCloseTo(fixed.bands[29].p90, 6)
+    expect(fixed.nominal.bands[29].p10).toBeCloseTo(fixed.nominal.bands[29].p90, 6)
   })
 
   it('a crash early hurts more than the same crash late', () => {
@@ -80,5 +80,18 @@ describe('retirement simulation', () => {
     expect(scaled.outgoingMonthly).toBe(6000)
     expect(scaled.outgoingFlatMonthly).toBe(200)
     expect(scaled.whatIfs[0]).toMatchObject({ monthly: 4000 })
+  })
+
+  it("reports outcomes in today's money below the future-money ones when prices rise", () => {
+    const result = simulate(plan(), { ...calm, runs: 100 })
+    expect(result.real.medianEnd).toBeLessThan(result.nominal.medianEnd)
+    expect(result.real.medianEnd).toBeCloseTo(result.nominal.medianEnd / 1.02 ** 30, 0)
+  })
+
+  it('compares cash buffers on the same futures', async () => {
+    const tight = plan({ outgoingMonthly: 4000 })
+    const cells = await bufferSweep(tight, { ...DEFAULT_SIM, runs: 100, classes: { a: 'stocks' } }, {}, 100)
+    expect(cells.map((c) => c.years)).toEqual(BUFFER_YEARS)
+    expect(cells.every((c) => c.successRate >= 0 && c.successRate <= 1)).toBe(true)
   })
 })

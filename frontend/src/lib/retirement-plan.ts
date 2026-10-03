@@ -1,5 +1,5 @@
 import { SCENARIOS_KEY, scheduleSync } from '@/lib/retirement-sync'
-import { annualGrowthPercent, assetFixedMonthly, assetValue, computeRetirement } from '@/lib/retirement'
+import { annualGrowthPercent, assetCostBasis, assetFixedMonthly, assetValue, computeRetirement } from '@/lib/retirement'
 import { defaultDrawable, type Assumptions, type ProjectionAsset, type ProjectionInput, type WhatIf } from '@/lib/retirement-projection'
 import type { Asset, RecurringTransaction } from '@/types'
 
@@ -26,6 +26,10 @@ export interface Plan {
   /** Hypothetical assets to sell from, kept with the plan. */
   tempAssets: TempAsset[]
   whatIfs: WhatIf[]
+  /** The last calendar year a recurring line (or `asset:<id>:income`) counts; unset means it never stops. */
+  lineEnd?: Record<string, number>
+  /** Assets whose gains are not taxed when sold. */
+  taxFree?: Record<string, boolean>
 }
 
 export const DEFAULT_PLAN: Plan = {
@@ -36,6 +40,8 @@ export const DEFAULT_PLAN: Plan = {
   sellOrder: {},
   tempAssets: [],
   whatIfs: [],
+  lineEnd: {},
+  taxFree: {},
 }
 export const PLAN_KEY = 'retirement:plan'
 export { SCENARIOS_KEY }
@@ -65,17 +71,30 @@ export function buildProjectionInputs(
   assets: Asset[],
   currency: string,
   excluded: ReadonlySet<string>,
+  thisYear: number = new Date().getFullYear(),
 ) {
   // What the page already counts feeds the projection, so its switches apply here too.
   const summary = computeRetirement(items, assets, currency, excluded)
   const flatSet = new Set(plan.flat ?? [])
   const sum = (lines: { monthly: number }[]) => lines.reduce((total, l) => total + l.monthly, 0)
+  const lineEnd = plan.lineEnd ?? {}
+  const ends = (id: string) => lineEnd[id] !== undefined
   const recurringIncome = summary.income.filter((l) => l.kind === 'recurring' && !excluded.has(l.id))
-  const recurringIncomeMonthly = sum(recurringIncome.filter((l) => !flatSet.has(l.id)))
-  const recurringIncomeFlatMonthly = sum(recurringIncome.filter((l) => flatSet.has(l.id)))
   const countedOutgoing = summary.outgoing.filter((l) => !excluded.has(l.item.id))
-  const outgoingMonthly = sum(countedOutgoing.filter((l) => !flatSet.has(l.item.id)))
-  const outgoingFlatMonthly = sum(countedOutgoing.filter((l) => flatSet.has(l.item.id)))
+  const open = <T,>(list: T[], idOf: (item: T) => string) => list.filter((l) => !ends(idOf(l)))
+  const recurringIncomeMonthly = sum(open(recurringIncome, (l) => l.id).filter((l) => !flatSet.has(l.id)))
+  const recurringIncomeFlatMonthly = sum(open(recurringIncome, (l) => l.id).filter((l) => flatSet.has(l.id)))
+  const outgoingMonthly = sum(open(countedOutgoing, (l) => l.item.id).filter((l) => !flatSet.has(l.item.id)))
+  const outgoingFlatMonthly = sum(open(countedOutgoing, (l) => l.item.id).filter((l) => flatSet.has(l.item.id)))
+  // Lines with an end year are kept out of the totals and handled on their own.
+  const timed: NonNullable<ProjectionInput['timed']> = [
+    ...recurringIncome.filter((l) => ends(l.id)).map((l) => ({
+      id: l.id, kind: 'income' as const, label: l.label, monthly: l.monthly, fromYear: 0, toYear: lineEnd[l.id] - thisYear, inflates: !flatSet.has(l.id),
+    })),
+    ...countedOutgoing.filter((l) => ends(l.item.id)).map((l) => ({
+      id: l.item.id, kind: 'expense' as const, label: l.item.description, monthly: l.monthly, fromYear: 0, toYear: lineEnd[l.item.id] - thisYear, inflates: !flatSet.has(l.item.id),
+    })),
+  ]
 
   const projectionAssets: ProjectionAsset[] = (() => {
     const list: ProjectionAsset[] = []
@@ -95,6 +114,9 @@ export function buildProjectionInputs(
         yieldPercent: yielding ? asset.income_rate ?? undefined : undefined,
         fixedMonthly: rental ?? undefined,
         fixedFlat: flatSet.has(`asset:${asset.id}:income`) || undefined,
+        fixedUntilYear: ends(`asset:${asset.id}:income`) ? lineEnd[`asset:${asset.id}:income`] - thisYear : undefined,
+        costBasis: assetCostBasis(asset, currency) ?? undefined,
+        taxFree: plan.taxFree?.[asset.id] || undefined,
         sellPercent: asset.sell_percent_per_year && !excluded.has(`asset:${asset.id}:sale`) ? asset.sell_percent_per_year : undefined,
       })
     }
@@ -109,12 +131,13 @@ export function buildProjectionInputs(
         sellOrder: plan.sellOrder[temp.id],
         temporary: true,
         startYear: temp.fromYear || undefined,
+        taxFree: plan.taxFree?.[temp.id] || undefined,
       })
     }
     return list
   })()
 
-  const base: Omit<ProjectionInput, 'whatIfs'> = { recurringIncomeMonthly, recurringIncomeFlatMonthly, outgoingMonthly, outgoingFlatMonthly, assets: projectionAssets, assumptions: plan.assumptions }
+  const base: Omit<ProjectionInput, 'whatIfs'> = { recurringIncomeMonthly, recurringIncomeFlatMonthly, outgoingMonthly, outgoingFlatMonthly, assets: projectionAssets, assumptions: plan.assumptions, timed }
 
   return { summary, flatSet, projectionAssets, base }
 }

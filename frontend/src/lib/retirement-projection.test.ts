@@ -327,3 +327,103 @@ describe('what-if amounts and inflation', () => {
     expect(fixed.rows[2].outgoing).toBeCloseTo(24_000)
   })
 })
+
+
+describe('taxes', () => {
+  it('takes tax on income before it covers the outgoings', () => {
+    const p = run({ recurringIncomeMonthly: 1_000, outgoingMonthly: 1_000, assets: [pool(100_000)], assumptions: { taxIncomePercent: 20, horizonYears: 1 } })
+    expect(p.rows[0].tax).toBeCloseTo(2_400)
+    expect(p.rows[0].drawn.p).toBeCloseTo(2_400)
+  })
+
+  it('taxes what assets pay out at its own rate', () => {
+    const p = run({ assets: [pool(100_000, { yieldPercent: 5 })], assumptions: { taxAssetIncomePercent: 30, horizonYears: 1 } })
+    expect(p.rows[0].tax).toBeCloseTo(1_500)
+  })
+
+  it('grosses a sale up so that what arrives after the gains tax covers the cost', () => {
+    // Half of the value is gain; a 20% tax on it means 90% of each sale arrives.
+    const p = run({ assets: [pool(100_000, { costBasis: 50_000 })], outgoingMonthly: 900, assumptions: { taxGainsPercent: 20, horizonYears: 1 } })
+    expect(p.rows[0].drawn.p).toBeCloseTo(12_000)
+    expect(p.rows[0].tax).toBeCloseTo(1_200)
+    expect(p.rows[0].drawable).toBeCloseTo(88_000)
+  })
+
+  it('does not tax an asset with no gain, or one marked tax free', () => {
+    const none = run({ assets: [pool(100_000)], outgoingMonthly: 1_000, assumptions: { taxGainsPercent: 25, horizonYears: 1 } })
+    expect(none.rows[0].tax).toBe(0)
+    const free = run({ assets: [pool(100_000, { costBasis: 0, taxFree: true })], outgoingMonthly: 1_000, assumptions: { taxGainsPercent: 25, horizonYears: 1 } })
+    expect(free.rows[0].tax).toBe(0)
+  })
+
+  it('lasts less long when sales are taxed', () => {
+    const base = run({ assets: [pool(120_000, { costBasis: 20_000 })], outgoingMonthly: 1_000, assumptions: { horizonYears: 30 } })
+    const taxed = run({ assets: [pool(120_000, { costBasis: 20_000 })], outgoingMonthly: 1_000, assumptions: { horizonYears: 30, taxGainsPercent: 25 } })
+    expect(taxed.runwayYears!).toBeLessThan(base.runwayYears!)
+    expect(taxed.totalTax).toBeGreaterThan(0)
+  })
+
+  it('taxes the gain on a planned sale and on a what-if sale', () => {
+    const planned = run({ assets: [pool(100_000, { costBasis: 0, sellPercent: 10 })], assumptions: { taxGainsPercent: 20, horizonYears: 1 } })
+    expect(planned.rows[0].tax).toBeCloseTo(2_000)
+    const whatIf: WhatIf = { id: 's', kind: 'sell', label: 's', assetId: 'p', year: 0, feesPercent: 0 }
+    const sold = run({ assets: [pool(100_000, { costBasis: 40_000, drawable: false })], whatIfs: [whatIf], assumptions: { taxGainsPercent: 20, horizonYears: 1 } })
+    expect(sold.rows[0].tax).toBeCloseTo(12_000)
+  })
+})
+
+describe('lines that end', () => {
+  const mortgage = { id: 'm', kind: 'expense' as const, label: 'm', monthly: 1_000, fromYear: 0, toYear: 4, inflates: false }
+  it('stops counting a line after its last year', () => {
+    const p = run({ assets: [pool(1_000_000)], timed: [mortgage] })
+    expect(p.rows[4].outgoing).toBeCloseTo(12_000)
+    expect(p.rows[5].outgoing).toBeCloseTo(0)
+  })
+
+  it('is replaced by a spending what-if like the other recurring costs', () => {
+    const spend: WhatIf = { id: 'x', kind: 'spend', label: 'x', monthly: 500, fromYear: 2 }
+    const p = run({ assets: [pool(1_000_000)], timed: [mortgage], whatIfs: [spend] })
+    expect(p.rows[1].outgoing).toBeCloseTo(12_000)
+    expect(p.rows[2].outgoing).toBeCloseTo(6_000)
+  })
+
+  it('can be an income that stops', () => {
+    const rent = { id: 'r', kind: 'income' as const, label: 'r', monthly: 500, fromYear: 0, toYear: 1, inflates: false }
+    const p = run({ assets: [pool(0)], timed: [rent] })
+    expect(p.rows[1].income).toBeCloseTo(6_000)
+    expect(p.rows[2].income).toBeCloseTo(0)
+  })
+})
+
+describe('cash buffer', () => {
+  const crash = { inflationPercent: Array(20).fill(0), growthPercent: (_a: ProjectionAsset, y: number) => (y === 1 ? -40 : y === 0 ? 10 : 6) }
+  const stocks = (value: number): ProjectionAsset => ({ id: 's', name: 'stocks', value, drawable: true, growthPercent: 6 })
+
+  it('is set aside in the first year of drawing and spent before selling the other assets in a bad year', () => {
+    const p = run({ assets: [stocks(500_000)], outgoingMonthly: 2_000, assumptions: { bufferYears: 2 }, market: crash })
+    expect(p.rows[0].byAsset.__cash__).toBeGreaterThan(0)
+    // Year 1 falls 40%: costs come out of the buffer, nothing is sold.
+    expect(p.rows[1].drawn.s ?? 0).toBeCloseTo(0)
+    expect(p.rows[1].drawn.__cash__).toBeGreaterThan(0)
+  })
+
+  it('does well in a crash compared with selling into it', () => {
+    const without = run({ assets: [stocks(500_000)], outgoingMonthly: 2_500, assumptions: { horizonYears: 12 }, market: crash })
+    const withBuffer = run({ assets: [stocks(500_000)], outgoingMonthly: 2_500, assumptions: { horizonYears: 12, bufferYears: 3 }, market: crash })
+    expect(withBuffer.rows[11].drawable).toBeGreaterThan(without.rows[11].drawable)
+  })
+
+  it('leaves a plain projection alone when no buffer is set', () => {
+    const a = run({ assets: [stocks(500_000)], outgoingMonthly: 2_000 })
+    const b = run({ assets: [stocks(500_000)], outgoingMonthly: 2_000, assumptions: { bufferYears: 0 } })
+    expect(b.rows[19].drawable).toBeCloseTo(a.rows[19].drawable)
+  })
+})
+
+describe('deflator', () => {
+  it('reports prices against today for each year end', () => {
+    const p = run({ assets: [pool(1)], assumptions: { inflationPercent: 10, horizonYears: 3 } })
+    expect(p.rows[0].deflator).toBeCloseTo(1.1)
+    expect(p.rows[2].deflator).toBeCloseTo(1.331)
+  })
+})

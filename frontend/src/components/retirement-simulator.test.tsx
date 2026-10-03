@@ -17,9 +17,10 @@ it('shows how often the money lasts, a heat map of spending against crashes, and
   renderWithProviders(<RetirementSimulator items={[]} assets={[asset]} excluded={new Set()} currency="EUR" locale="en-US" />)
   expect(screen.getByText('Stress test')).toBeInTheDocument()
   // With no outgoings the assets always last.
-  await waitFor(() => expect(screen.getByText('100%')).toBeInTheDocument(), { timeout: 3000 })
+  await waitFor(() => expect(screen.getAllByText('100%').length).toBeGreaterThan(0), { timeout: 3000 })
   expect(screen.getByText('Where is it resilient?')).toBeInTheDocument()
   await waitFor(() => expect(screen.getByText(/lasts 9 times in 10/)).toBeInTheDocument(), { timeout: 15000 })
+  expect(screen.getByText("What is a cash buffer worth?")).toBeInTheDocument()
   expect(screen.getByLabelText('Behaviour of Index fund')).toHaveValue('stocks')
   expect(screen.getByLabelText('Crash chance a year (%)')).toBeInTheDocument()
 }, 30000)
