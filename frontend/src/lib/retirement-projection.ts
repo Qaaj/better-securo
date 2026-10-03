@@ -62,8 +62,10 @@ export interface Assumptions {
   sellStrategy?: 'pro_rata' | 'ordered'
   /** Tax on recurring income and income what-ifs, percent. */
   taxIncomePercent?: number
-  /** Tax on yields and rentals, percent. */
+  /** Tax on yields (dividends, interest), percent. */
   taxAssetIncomePercent?: number
+  /** Tax on fixed rent from assets, percent. */
+  taxRentPercent?: number
   /** Tax on the gain when an asset is sold, percent. */
   taxGainsPercent?: number
   /** Years of costs held in cash from the first drawdown year; spent first, refilled after a year without a fall. */
@@ -164,6 +166,7 @@ export function projectRetirement(input: ProjectionInput): Projection {
   const ordered = a.sellStrategy === 'ordered'
   const incomeTax = (a.taxIncomePercent ?? 0) / 100
   const assetIncomeTax = (a.taxAssetIncomePercent ?? 0) / 100
+  const rentTax = (a.taxRentPercent ?? 0) / 100
   const gainsTax = (a.taxGainsPercent ?? 0) / 100
   const bufferYears = a.bufferYears ?? 0
   // Prices at the start of each year against today's: fixed rate, or the simulated path compounded.
@@ -299,11 +302,12 @@ export function projectRetirement(input: ProjectionInput): Projection {
       }
     }
 
-    let paidOut = 0
+    let yieldIncome = 0
+    let rentIncome = 0
     for (const h of holdings) {
       if (!h.held || h.value <= 0) continue
-      if (h.yieldPercent) paidOut += (h.value * h.yieldPercent) / 100
-      if (h.fixedMonthly && (h.fixedUntilYear === undefined || year <= h.fixedUntilYear)) paidOut += h.fixedMonthly * 12 * (h.fixedFlat ? 1 : incomeInflate)
+      if (h.yieldPercent) yieldIncome += (h.value * h.yieldPercent) / 100
+      if (h.fixedMonthly && (h.fixedUntilYear === undefined || year <= h.fixedUntilYear)) rentIncome += h.fixedMonthly * 12 * (h.fixedFlat ? 1 : incomeInflate)
       if (h.sellPercent && h.drawable) {
         const sold = Math.min(h.value, (h.value * h.sellPercent) / 100)
         payableTax += sold * gainShare(h) * gainsTax
@@ -311,9 +315,9 @@ export function projectRetirement(input: ProjectionInput): Projection {
         saleIncome += sold
       }
     }
-    assetIncome = paidOut
+    assetIncome = yieldIncome + rentIncome
     income += assetIncome + saleIncome
-    payableTax += taxableIncome * incomeTax + assetIncome * assetIncomeTax
+    payableTax += taxableIncome * incomeTax + yieldIncome * assetIncomeTax + rentIncome * rentTax
 
     const netFlow = income + oneOffs - outgoing - payableTax
     const phase: Phase =

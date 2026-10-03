@@ -86,10 +86,11 @@ export function buildReport(input: ReportInput): Report {
       label: t('retirement.projection.sellStrategy'),
       value: a.sellStrategy === 'ordered' ? t('retirement.projection.strategyOrdered') : t('retirement.projection.strategyProRata'),
     },
-    ...(a.taxIncomePercent || a.taxAssetIncomePercent || a.taxGainsPercent
+    ...(a.taxIncomePercent || a.taxAssetIncomePercent || a.taxRentPercent || a.taxGainsPercent
       ? [
           { label: t('retirement.projection.taxIncome'), value: pct(a.taxIncomePercent ?? 0) },
           { label: t('retirement.projection.taxAssetIncome'), value: pct(a.taxAssetIncomePercent ?? 0) },
+          { label: t('retirement.projection.taxRent'), value: pct(a.taxRentPercent ?? 0) },
           { label: t('retirement.projection.taxGains'), value: pct(a.taxGainsPercent ?? 0) },
         ]
       : []),

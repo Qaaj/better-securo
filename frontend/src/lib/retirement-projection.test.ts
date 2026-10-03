@@ -341,6 +341,14 @@ describe('taxes', () => {
     expect(p.rows[0].tax).toBeCloseTo(1_500)
   })
 
+  it('taxes rent at its own rate, not the yield rate', () => {
+    const house: ProjectionAsset = { id: 'h', name: 'House', value: 300_000, drawable: false, fixedMonthly: 1_000 }
+    const untaxed = run({ assets: [house], assumptions: { taxAssetIncomePercent: 30, horizonYears: 1 } })
+    expect(untaxed.rows[0].tax).toBe(0)
+    const taxed = run({ assets: [house], assumptions: { taxRentPercent: 25, horizonYears: 1 } })
+    expect(taxed.rows[0].tax).toBeCloseTo(3_000)
+  })
+
   it('grosses a sale up so that what arrives after the gains tax covers the cost', () => {
     // Half of the value is gain; a 20% tax on it means 90% of each sale arrives.
     const p = run({ assets: [pool(100_000, { costBasis: 50_000 })], outgoingMonthly: 900, assumptions: { taxGainsPercent: 20, horizonYears: 1 } })
