@@ -181,8 +181,14 @@ function percentile(sorted: number[], p: number): number {
   return sorted[idx]
 }
 
+/** How the stress test treats an asset: what you set for it, else its own class (temporary assets), else its type. */
+export function riskClassOf(asset: ProjectionAsset, params: SimParams, types: Record<string, string>): RiskClass {
+  const own = asset.riskClass
+  return params.classes[asset.id] ?? (own && (RISK_CLASSES as string[]).includes(own) ? (own as RiskClass) : defaultRiskClass(types[asset.id] ?? ''))
+}
+
 function classifier(params: SimParams, types: Record<string, string>) {
-  return (asset: ProjectionAsset): RiskClass => params.classes[asset.id] ?? defaultRiskClass(types[asset.id] ?? '')
+  return (asset: ProjectionAsset): RiskClass => riskClassOf(asset, params, types)
 }
 
 /** Run many futures through the projection. `types` maps asset id to its type, for default risk classes. */

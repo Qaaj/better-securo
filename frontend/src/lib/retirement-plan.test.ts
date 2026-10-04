@@ -49,4 +49,12 @@ describe('buildProjectionInputs', () => {
     const none0 = buildProjectionInputs(plan({ living: { monthly: 0, inflates: true } }), [item('rent', 'debit', 500)], [], 'EUR', none, 2026)
     expect(none0.base.outgoingMonthly).toBe(500)
   })
+
+  it('passes a hypothetical asset\'s type on to the stress test', () => {
+    const { projectionAssets } = buildProjectionInputs(
+      plan({ tempAssets: [{ id: 't1', name: 'More bonds', value: 50_000, growthPercent: 3, yieldPercent: 0, riskClass: 'bonds' }] }),
+      [], [], 'EUR', none, 2026,
+    )
+    expect(projectionAssets[0]).toMatchObject({ name: 'More bonds', temporary: true, riskClass: 'bonds' })
+  })
 })

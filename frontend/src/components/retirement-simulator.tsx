@@ -9,7 +9,7 @@ import {
   SWEEP_CRASH,
   SWEEP_RUNS,
   SWEEP_SPEND,
-  defaultRiskClass,
+  riskClassOf,
   simulate,
   bufferSweep,
   sweep,
@@ -133,7 +133,6 @@ export function RetirementSimulator({
   const depletedData = (result?.depletedBy ?? []).map((share, year) => ({ label: String(thisYear + year), share: Math.round(share * 1000) / 10 }))
 
   const risky = projectionAssets.filter((a) => a.value > 0)
-  const classOf = (id: string): RiskClass => params.classes[id] ?? defaultRiskClass(types[id] ?? '')
 
   const rate = result?.successRate ?? null
   const tone = rate === null ? 'text-foreground' : toneFor(rate) === 'positive' ? 'text-emerald-600' : toneFor(rate) === 'warn' ? 'text-amber-600' : 'text-rose-600'
@@ -399,7 +398,7 @@ export function RetirementSimulator({
                 <select
                   className="border border-border rounded-md px-2 py-1 text-xs bg-card"
                   aria-label={t('retirement.simulate.classFor', { name: asset.name })}
-                  value={classOf(asset.id)}
+                  value={riskClassOf(asset, params, types)}
                   onChange={(e) => set('classes', { ...params.classes, [asset.id]: e.target.value as RiskClass })}
                 >
                   {RISK_CLASSES.map((c) => (

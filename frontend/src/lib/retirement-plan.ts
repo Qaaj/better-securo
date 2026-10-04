@@ -1,3 +1,4 @@
+import type { RiskClass } from '@/lib/retirement-simulation'
 import { SCENARIOS_KEY, scheduleSync } from '@/lib/retirement-sync'
 import { annualGrowthPercent, assetCostBasis, assetFixedMonthly, assetValue, computeRetirement } from '@/lib/retirement'
 import { defaultDrawable, type Assumptions, type ProjectionAsset, type ProjectionInput, type WhatIf } from '@/lib/retirement-projection'
@@ -12,6 +13,8 @@ export interface TempAsset {
   yieldPercent: number
   /** The asset exists from this year (0 = now). Older saved plans have none. */
   fromYear?: number
+  /** How the stress test treats it. Older saved plans have none, which counts as fixed. */
+  riskClass?: RiskClass
 }
 
 export interface Plan {
@@ -156,6 +159,7 @@ export function buildProjectionInputs(
         sellOrder: plan.sellOrder[temp.id],
         temporary: true,
         startYear: temp.fromYear || undefined,
+        riskClass: temp.riskClass,
         taxFree: plan.taxFree?.[temp.id] || undefined,
         yieldTaxPercent: rates[`yield:${temp.id}`],
         gainsTaxPercent: rates[`gains:${temp.id}`],

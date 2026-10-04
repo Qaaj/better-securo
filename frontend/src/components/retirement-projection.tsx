@@ -26,7 +26,7 @@ import { formatCurrency } from '@/lib/format'
 import { downloadText, printHtml } from '@/lib/download'
 import { buildFullReportHtml, type FullReportInput } from '@/lib/retirement-full-report'
 import { buildExportCsv, buildExportJson, type ExportExtras } from '@/lib/retirement-export'
-import { DEFAULT_SIM, SWEEP_RUNS, bufferSweep, defaultRiskClass, simulate, sweep } from '@/lib/retirement-simulation'
+import { DEFAULT_SIM, RISK_CLASSES, SWEEP_RUNS, bufferSweep, riskClassOf, simulate, sweep, type RiskClass } from '@/lib/retirement-simulation'
 import { buildReport, describeWhatIf, reportToHtml, reportToMarkdown } from '@/lib/retirement-report'
 import { AssetsChart, AssetsTable, type ChartMode } from '@/components/retirement-projection-charts'
 import { cn } from '@/lib/utils'
@@ -154,7 +154,6 @@ export function RetirementProjection({
     const params = read(SIM_KEY, DEFAULT_SIM)
     const input = { ...base, whatIfs: taxedWhatIfs }
     const types = Object.fromEntries(assets.map((x) => [x.id, x.type]))
-    const classOf = (id: string) => params.classes[id] ?? defaultRiskClass(types[id] ?? '')
     const result = simulate(input, params, types)
     await new Promise((resolve) => setTimeout(resolve, 0))
     const grid = await sweep(input, params, types, SWEEP_RUNS)
@@ -193,7 +192,7 @@ export function RetirementProjection({
         result,
         grid,
         buffers,
-        behaviour: projectionAssets.filter((x) => x.drawable && x.value > 0).map((x) => ({ name: x.name, riskClass: classOf(x.id) })),
+        behaviour: projectionAssets.filter((x) => x.drawable && x.value > 0).map((x) => ({ name: x.name, riskClass: riskClassOf(x, params, types) })),
         runsPerCell: SWEEP_RUNS,
       },
     }
@@ -757,6 +756,7 @@ function SpendFrom({
   const [tempGrowth, setTempGrowth] = useState('')
   const [tempYield, setTempYield] = useState('')
   const [tempFrom, setTempFrom] = useState('0')
+  const [tempClass, setTempClass] = useState<RiskClass>('stocks')
   const addTemp = () => {
     const value = parseFloat(tempValue)
     if (Number.isNaN(value) || value <= 0) return
@@ -767,6 +767,7 @@ function SpendFrom({
       growthPercent: parseFloat(tempGrowth) || 0,
       yieldPercent: parseFloat(tempYield) || 0,
       fromYear: Math.max(0, parseInt(tempFrom, 10) || 0),
+      riskClass: tempClass,
     })
     setTempName('')
     setTempValue('')
@@ -851,7 +852,7 @@ function SpendFrom({
       </ul>
       <div className="mt-3 rounded-lg border border-dashed border-border p-3">
         <p className="text-xs font-medium text-muted-foreground mb-2">{t('retirement.projection.addTemp')}</p>
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 items-end">
+        <div className="grid grid-cols-2 lg:grid-cols-7 gap-2 items-end">
           <div className="space-y-1.5 col-span-2 lg:col-span-1">
             <Label htmlFor={`${uid}-tn`} className="text-xs">{t('retirement.projection.label')}</Label>
             <Input id={`${uid}-tn`} value={tempName} onChange={(e) => setTempName(e.target.value)} placeholder={t('retirement.projection.tempPlaceholder')} className="h-8" />
@@ -867,6 +868,19 @@ function SpendFrom({
           <div className="space-y-1.5">
             <Label htmlFor={`${uid}-ty`} className="text-xs">{t('retirement.projection.tempYield')}</Label>
             <Input id={`${uid}-ty`} type="number" min="0" step="any" value={tempYield} onChange={(e) => setTempYield(e.target.value)} className="h-8" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-tc`} className="text-xs">{t('retirement.projection.tempType')}</Label>
+            <select
+              id={`${uid}-tc`}
+              className="w-full border border-border rounded-md px-2 h-8 text-sm bg-card"
+              value={tempClass}
+              onChange={(e) => setTempClass(e.target.value as RiskClass)}
+            >
+              {RISK_CLASSES.map((c) => (
+                <option key={c} value={c}>{t(`retirement.simulate.class_${c}`)}</option>
+              ))}
+            </select>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor={`${uid}-tf`} className="text-xs">{t('retirement.projection.tempFrom', { year: thisYear + (parseInt(tempFrom, 10) || 0) })}</Label>

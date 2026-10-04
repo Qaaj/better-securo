@@ -47,6 +47,8 @@ export interface ProjectionAsset {
   costBasis?: number
   /** Gains on selling it are not taxed. */
   taxFree?: boolean
+  /** How the stress test treats it: stocks, bonds, property, cash or fixed. Unset follows the asset's type. */
+  riskClass?: string
   /** Own tax rates, percent; unset uses the plan's default for that kind. */
   yieldTaxPercent?: number
   rentTaxPercent?: number
