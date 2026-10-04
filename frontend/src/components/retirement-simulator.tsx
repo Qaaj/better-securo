@@ -80,6 +80,7 @@ export function RetirementSimulator({
   const horizon = plan.assumptions.horizonYears
   const thisYear = new Date().getFullYear()
 
+  const [fanView, setFanView] = useState<'chart' | 'table'>('chart')
   const [result, setResult] = useState<ReturnType<typeof simulate> | null>(null)
   // The sweep result belongs to the exact inputs it was run for; a change makes it stale until the next one lands.
   const [swept, setSwept] = useState<{ input: unknown; params: SimParams; types: unknown; cells: SweepCell[] } | null>(null)
@@ -182,6 +183,19 @@ export function RetirementSimulator({
           <div>
             <div className="flex items-center justify-between gap-3 mb-2">
               <p className="text-xs font-medium text-muted-foreground">{t('retirement.simulate.fanTitle')}</p>
+              <div className="flex items-center gap-2">
+              <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+                {(['chart', 'table'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setFanView(mode)}
+                    className={`px-2.5 py-1 ${fanView === mode ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {mode === 'chart' ? t('retirement.simulate.viewChart') : t('retirement.simulate.viewTable')}
+                  </button>
+                ))}
+              </div>
               <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
                 {([true, false] as const).map((today) => (
                   <button
@@ -194,7 +208,38 @@ export function RetirementSimulator({
                   </button>
                 ))}
               </div>
+              </div>
             </div>
+            {fanView === 'table' ? (
+              <div className="overflow-x-auto max-h-96 overflow-y-auto rounded-lg border border-border">
+                <table className="w-full text-xs tabular-nums">
+                  <thead className="sticky top-0 bg-card">
+                    <tr className="text-muted-foreground">
+                      <th className="text-left font-medium px-3 py-2">{t('retirement.simulate.tableYear')}</th>
+                      <th className="text-right font-medium px-3 py-2">{t('retirement.simulate.tableP10')}</th>
+                      <th className="text-right font-medium px-3 py-2">{t('retirement.simulate.tableP25')}</th>
+                      <th className="text-right font-medium px-3 py-2">{t('retirement.simulate.tableMedian')}</th>
+                      <th className="text-right font-medium px-3 py-2">{t('retirement.simulate.tableP75')}</th>
+                      <th className="text-right font-medium px-3 py-2">{t('retirement.simulate.tableP90')}</th>
+                      <th className="text-right font-medium px-3 py-2">{t('retirement.simulate.tableRunOut')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(view?.bands ?? []).map((b) => (
+                      <tr key={b.year} className="border-t border-border">
+                        <td className="px-3 py-1.5">{thisYear + b.year}</td>
+                        <td className="text-right px-3 py-1.5">{money(b.p10)}</td>
+                        <td className="text-right px-3 py-1.5">{money(b.p25)}</td>
+                        <td className="text-right px-3 py-1.5 font-medium">{money(b.p50)}</td>
+                        <td className="text-right px-3 py-1.5">{money(b.p75)}</td>
+                        <td className="text-right px-3 py-1.5">{money(b.p90)}</td>
+                        <td className="text-right px-3 py-1.5 text-muted-foreground">{percent(result?.depletedBy[b.year] ?? 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={bandData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
@@ -212,6 +257,7 @@ export function RetirementSimulator({
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
+            )}
             <p className="text-[11px] text-muted-foreground mt-1">{params.todaysMoney ? t('retirement.simulate.fanHintToday') : t('retirement.simulate.fanHint')}</p>
           </div>
 
