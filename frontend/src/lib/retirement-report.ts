@@ -34,6 +34,8 @@ export interface ReportInput {
   assets: ProjectionAsset[]
   /** Lines kept at a fixed amount instead of rising with inflation, with what they come to a month. */
   fixedLines: { label: string; monthly: number }[]
+  /** The living and travel figure typed in the plan, if any. */
+  living?: { monthly: number; inflates: boolean } | null
 }
 
 /** One line for a what-if, shared by the page and the report. */
@@ -52,7 +54,7 @@ export function describeWhatIf(t: T, w: WhatIf, thisYear: number): string {
 }
 
 export function buildReport(input: ReportInput): Report {
-  const { t, currency, locale, now, assumptions: a, whatIfs, scenario, baseline, assets, fixedLines } = input
+  const { t, currency, locale, now, assumptions: a, whatIfs, scenario, baseline, assets, fixedLines, living } = input
   const thisYear = now.getFullYear()
   const money = (v: number) => new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 0 }).format(Math.round(v))
   const pct = (v: number) => `${Number(v.toFixed(2))}%`
@@ -77,6 +79,12 @@ export function buildReport(input: ReportInput): Report {
     { label: t('retirement.projection.horizon'), value: `${horizon} ${t('retirement.projection.yearsSuffix')} (${thisYear}–${thisYear + horizon - 1})` },
     { label: t('retirement.projection.inflation'), value: pct(a.inflationPercent) },
     { label: t('retirement.projection.incomeIndexed'), value: a.incomeIndexed ? t('retirement.report.yes') : t('retirement.report.no') },
+    ...(living && living.monthly > 0
+      ? [{
+          label: t('retirement.projection.living'),
+          value: `${money(living.monthly)}${t('retirement.report.perMonthShort')}${living.inflates ? '' : ` · ${t('retirement.projection.staysTheSame')}`}`,
+        }]
+      : []),
     { label: t('retirement.report.drawdownStarts'), value: String(thisYear + startYear) },
     {
       label: t('retirement.report.drawdownEnds'),

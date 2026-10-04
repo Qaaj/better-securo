@@ -171,3 +171,12 @@ it('exports the plan as Markdown and as a print-ready PDF page', async () => {
   expect(html).toContain('<svg')
   expect(html).toContain('Year by year')
 })
+
+it('has a living and travel figure whose change shows up in the runway steps', async () => {
+  const { user } = renderWithProviders(<RetirementProjection {...props} />)
+  await user.type(screen.getByLabelText(/A month, in EUR/), '2000')
+  expect(await screen.findByText('Now')).toBeInTheDocument()
+  expect(screen.getByText('+20%')).toBeInTheDocument()
+  expect(screen.getByText('−20%')).toBeInTheDocument()
+  expect(JSON.parse(window.localStorage.getItem('retirement:plan') ?? '{}').living).toEqual({ monthly: 2000, inflates: true })
+})

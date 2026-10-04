@@ -35,6 +35,15 @@ export interface Plan {
    * `income:<recurring id>`, `yield:<asset id>`, `rent:<asset id>`, `gains:<asset id>`, `whatif:<what-if id>`.
    */
   taxRates?: Record<string, number>
+  /** A spending figure typed in the plan on top of the recurring costs, such as living and travel. */
+  living?: Living
+}
+
+export interface Living {
+  /** A month, in the display currency, today's money. */
+  monthly: number
+  /** It rises with inflation (default); unticked it stays the same. */
+  inflates: boolean
 }
 
 export const DEFAULT_PLAN: Plan = {
@@ -95,8 +104,9 @@ export function buildProjectionInputs(
   const plainIncome = recurringIncome.filter((l) => !solo(l.id))
   const recurringIncomeMonthly = sum(plainIncome.filter((l) => !flatSet.has(l.id)))
   const recurringIncomeFlatMonthly = sum(plainIncome.filter((l) => flatSet.has(l.id)))
-  const outgoingMonthly = sum(open(countedOutgoing, (l) => l.item.id).filter((l) => !flatSet.has(l.item.id)))
-  const outgoingFlatMonthly = sum(open(countedOutgoing, (l) => l.item.id).filter((l) => flatSet.has(l.item.id)))
+  const living = plan.living && plan.living.monthly > 0 ? plan.living : null
+  const outgoingMonthly = sum(open(countedOutgoing, (l) => l.item.id).filter((l) => !flatSet.has(l.item.id))) + (living && living.inflates ? living.monthly : 0)
+  const outgoingFlatMonthly = sum(open(countedOutgoing, (l) => l.item.id).filter((l) => flatSet.has(l.item.id))) + (living && !living.inflates ? living.monthly : 0)
   // Lines with an end year are kept out of the totals and handled on their own.
   const timed: NonNullable<ProjectionInput['timed']> = [
     ...recurringIncome.filter((l) => solo(l.id)).map((l) => ({

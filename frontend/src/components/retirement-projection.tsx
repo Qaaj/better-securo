@@ -17,6 +17,7 @@ import {
   buildProjectionInputs,
   read,
   write,
+  type Living,
   type Plan,
   type TempAsset,
 } from '@/lib/retirement-plan'
@@ -86,6 +87,25 @@ export function RetirementProjection({
 
   const thisYear = new Date().getFullYear()
   const horizon = plan.assumptions.horizonYears
+  const living: Living = plan.living ?? { monthly: 0, inflates: true }
+  // What the same plan gives with living and travel a bit lower or higher.
+  const livingSteps = useMemo(
+    () =>
+      living.monthly > 0
+        ? [-20, -10, 0, 10, 20].map((pct) => {
+            const delta = (living.monthly * pct) / 100
+            const shifted = {
+              ...base,
+              outgoingMonthly: base.outgoingMonthly + (living.inflates ? delta : 0),
+              outgoingFlatMonthly: (base.outgoingFlatMonthly ?? 0) + (living.inflates ? 0 : delta),
+              whatIfs: taxedWhatIfs,
+            }
+            const result = projectRetirement(shifted)
+            return { pct, monthly: living.monthly + delta, runway: result.runwayYears, left: result.rows[horizon - 1]?.drawable ?? 0 }
+          })
+        : [],
+    [base, taxedWhatIfs, living.monthly, living.inflates, horizon],
+  )
   const money = (v: number) => mask(formatCurrency(v, currency, locale))
   const runway = (years: number | null) =>
     years === null ? t('retirement.projection.beyond', { years: horizon }) : t('retirement.projection.years', { years: years.toFixed(1), calendar: thisYear + Math.floor(years) })
@@ -121,6 +141,7 @@ export function RetirementProjection({
       baseline,
       assets: projectionAssets,
       fixedLines,
+      living: plan.living,
     })
   }
   const stamp = () => new Date().toISOString().slice(0, 10)
@@ -157,6 +178,7 @@ export function RetirementProjection({
               ...projectionAssets.filter((x) => x.fixedFlat && x.fixedMonthly).map((x) => ({ label: x.name, monthly: x.fixedMonthly ?? 0 })),
             ]
           : [],
+        living: plan.living,
         endedLines: Object.entries(plan.lineEnd ?? {}).map(([id, year]) => ({
           label: id.startsWith('asset:') ? names[id.split(':')[1]] ?? id : lineLabel(id),
           year,
@@ -317,6 +339,15 @@ export function RetirementProjection({
           </div>
         </div>
 
+        <LivingCosts
+          living={living}
+          onChange={(next) => setPlan({ ...plan, living: next })}
+          steps={livingSteps}
+          currency={currency}
+          locale={locale}
+          money={money}
+          runway={runway}
+        />
         <Assumptions plan={plan} setAssumption={setAssumption} thisYear={thisYear} />
         <InflationLines
           income={summary.income.filter((l) => !excluded.has(l.id) && (l.kind === 'recurring' || l.asset?.income_mode === 'fixed'))}
@@ -390,6 +421,87 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={cn('text-lg font-semibold mt-0.5', tone === 'positive' && 'text-emerald-600', tone === 'negative' && 'text-rose-500')}>{value}</p>
       <p className="text-[11px] text-muted-foreground mt-0.5">{hint}</p>
+    </div>
+  )
+}
+
+/** One adjustable spending figure, with what the plan gives a little lower or higher. */
+function LivingCosts({
+  living,
+  onChange,
+  steps,
+  currency,
+  locale,
+  money,
+  runway,
+}: {
+  living: Living
+  onChange: (next: Living) => void
+  steps: { pct: number; monthly: number; runway: number | null; left: number }[]
+  currency: string
+  locale: string
+  money: (v: number) => string
+  runway: (years: number | null) => string
+}) {
+  const { t } = useTranslation()
+  const uid = useId()
+  const sliderMax = Math.max(10_000, Math.ceil((living.monthly * 2) / 500) * 500)
+  const set = (monthly: number) => onChange({ ...living, monthly: Math.max(0, Math.round(monthly)) })
+  return (
+    <div>
+      <p className="text-xs font-medium text-muted-foreground mb-1">{t('retirement.projection.living')}</p>
+      <p className="text-[11px] text-muted-foreground mb-2">{t('retirement.projection.livingHint')}</p>
+      <div className="grid grid-cols-1 lg:grid-cols-[14rem_1fr] gap-3 items-end">
+        <div className="space-y-1.5">
+          <Label htmlFor={`${uid}-living`} className="text-xs">{t('retirement.projection.livingMonthly', { currency })}</Label>
+          <Input
+            id={`${uid}-living`}
+            type="number"
+            min="0"
+            step="50"
+            value={living.monthly || ''}
+            placeholder="0"
+            onChange={(e) => set(parseFloat(e.target.value) || 0)}
+            className="h-8"
+          />
+        </div>
+        <input
+          type="range"
+          min="0"
+          max={sliderMax}
+          step="50"
+          value={Math.min(living.monthly, sliderMax)}
+          onChange={(e) => set(parseFloat(e.target.value))}
+          className="w-full accent-primary"
+          aria-label={t('retirement.projection.livingSlider')}
+        />
+      </div>
+      <label className="flex items-center gap-2 text-xs text-muted-foreground mt-2 cursor-pointer">
+        <input type="checkbox" checked={living.inflates} onChange={(e) => onChange({ ...living, inflates: e.target.checked })} className="size-4 accent-primary" />
+        {t('retirement.projection.livingInflates')}
+      </label>
+      {steps.length > 0 && (
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {steps.map((step) => (
+            <button
+              key={step.pct}
+              type="button"
+              onClick={() => set(step.monthly)}
+              className={cn(
+                'rounded-lg border px-2.5 py-2 text-left text-xs hover:border-primary transition-colors',
+                step.pct === 0 ? 'border-primary bg-primary/5' : 'border-border',
+              )}
+              title={t('retirement.projection.livingTryThis')}
+            >
+              <span className="block text-muted-foreground">{step.pct === 0 ? t('retirement.projection.livingNow') : `${step.pct > 0 ? '+' : '−'}${Math.abs(step.pct)}%`}</span>
+              <span className="block font-medium tabular-nums">{money(step.monthly)}{t('retirement.report.perMonthShort')}</span>
+              <span className={cn('block tabular-nums', step.runway === null ? 'text-emerald-600' : 'text-rose-500')}>{runway(step.runway)}</span>
+              <span className="block text-muted-foreground tabular-nums">{money(step.left)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {steps.length > 0 && <p className="text-[11px] text-muted-foreground mt-1">{t('retirement.projection.livingStepsHint', { locale })}</p>}
     </div>
   )
 }
