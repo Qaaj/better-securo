@@ -1404,7 +1404,7 @@
       "tempBadge": "temporary",
       "tempBadgeFrom": "temporary · from {{year}}",
       "tempFrom": "Available from year ({{year}})",
-      "tempHint": "Exists only in this plan and is saved with it. It is not added to your assets. Leave the year at 0 for something you have now, or set the year the money arrives.",
+      "tempHint": "Exists only in this plan and is saved with it. It is not added to your assets. Leave the year at 0 for something you have now, or set the year the money arrives. The type matters only in the Simulate tab: stocks swing and fall in a crash, bonds less, property in between, and cash or fixed do not move.",
       "valueOf": "Amount of {{name}}",
       "removeTemp": "Remove {{name}}",
       "cash": "Cash from surpluses",
@@ -1507,7 +1507,8 @@
       "livingInflates": "Living and travel rises with inflation",
       "livingNow": "Now",
       "livingTryThis": "Use this amount",
-      "livingStepsHint": "Each box shows the runway, and the assets left at the end of the plan, if living and travel were that much. Click one to use it."
+      "livingStepsHint": "Each box shows the runway, and the assets left at the end of the plan, if living and travel were that much. Click one to use it.",
+      "tempType": "Type"
     },
     "incomeRecurringTitle": "Recurring income",
     "incomeAssetsTitle": "Income from assets",

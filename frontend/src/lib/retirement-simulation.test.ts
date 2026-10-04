@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { projectRetirement, type ProjectionInput } from './retirement-projection'
-import { BUFFER_YEARS, DEFAULT_SIM, bufferSweep, defaultRiskClass, makeRng, scaleSpending, simulate, type SimParams } from './retirement-simulation'
+import { BUFFER_YEARS, DEFAULT_SIM, bufferSweep, defaultRiskClass, makeRng, riskClassOf, scaleSpending, simulate, type SimParams } from './retirement-simulation'
 
 function plan(over: Partial<ProjectionInput> = {}): ProjectionInput {
   return {
@@ -93,5 +93,17 @@ describe('retirement simulation', () => {
     const cells = await bufferSweep(tight, { ...DEFAULT_SIM, runs: 100, classes: { a: 'stocks' } }, {}, 100)
     expect(cells.map((c) => c.years)).toEqual(BUFFER_YEARS)
     expect(cells.every((c) => c.successRate >= 0 && c.successRate <= 1)).toBe(true)
+  })
+
+  it('uses the class a hypothetical asset was given, so it moves like stocks instead of staying fixed', () => {
+    const input = (riskClass?: string) => plan({ assets: [{ id: 't', name: 'More stocks', value: 1_000_000, drawable: true, growthPercent: 5, temporary: true, riskClass }] })
+    const noisy = { ...DEFAULT_SIM, runs: 200, inflationSpread: 0, spikeChancePercent: 0 }
+    const asStocks = simulate(input('stocks'), noisy)
+    const untyped = simulate(input(), noisy)
+    expect(asStocks.nominal.bands[29].p10).toBeLessThan(asStocks.nominal.bands[29].p90)
+    expect(untyped.nominal.bands[29].p10).toBeCloseTo(untyped.nominal.bands[29].p90, 6)
+    expect(riskClassOf({ id: 't', name: 't', value: 1, drawable: true, riskClass: 'bonds' }, noisy, {})).toBe('bonds')
+    // What is set in the stress test wins.
+    expect(riskClassOf({ id: 't', name: 't', value: 1, drawable: true, riskClass: 'bonds' }, { ...noisy, classes: { t: 'cash' } }, {})).toBe('cash')
   })
 })
