@@ -24,3 +24,12 @@ it('shows how often the money lasts, a heat map of spending against crashes, and
   expect(screen.getByLabelText('Behaviour of Index fund')).toHaveValue('stocks')
   expect(screen.getByLabelText('Crash chance a year (%)')).toBeInTheDocument()
 }, 30000)
+
+it('switches the fan chart to a table with a row per year', async () => {
+  const { user } = renderWithProviders(<RetirementSimulator items={[]} assets={[asset]} excluded={new Set()} currency="EUR" locale="en-US" />)
+  await user.click(await screen.findByRole('button', { name: 'Table' }))
+  expect(screen.getByText('Good luck (9 in 10)')).toBeInTheDocument()
+  expect(screen.getByText('Run out by')).toBeInTheDocument()
+  // Horizon is 10 years in this plan.
+  await waitFor(() => expect(screen.getAllByRole('row').length).toBeGreaterThanOrEqual(11))
+}, 30000)

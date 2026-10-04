@@ -120,7 +120,7 @@ The **Retirement** tab sits under Analysis.
 - **Temporary assets:** hypothetical assets ("more bonds") with an amount, growth, yield and an optional year they arrive. They live in the plan only and never touch your real assets.
 - **Views:** hover a year to see every asset's value, income by kind, outgoings, what was sold and any shortfall; switch the chart between Total, By asset and Table (a row per year, a column per asset).
 - **Saved plans:** name and save a whole setup, such as "without the mortgage", and reload it.
-- **Export:** Markdown, a print-ready page for *Save as PDF*, or a **Full report (HTML)**: one self-contained page with the projection charts (hover a year for the numbers), the settings used, a year-by-year breakdown of which assets are sold and for how much, the assets you do not sell from, and the stress test (success rate, fan chart, resilience grid, buffer comparison and its settings).
+- **Export:** Markdown, a print-ready page for *Save as PDF*, a **Data for sharing (JSON)** with every setting used (rates, per-line taxes, living and travel, what-ifs, assets, the stress test's settings) and every result, which can be pasted into a chat or a script, a **Year by year (CSV)** for a spreadsheet, or a **Full report (HTML)**: one self-contained page with the projection charts (hover a year for the numbers), the settings used, a year-by-year breakdown of which assets are sold and for how much, the assets you do not sell from, and the stress test (success rate, fan chart, resilience grid, buffer comparison and its settings).
 
 **Simulate** stress-tests the plan from the Projection tab. Instead of one steady growth rate and inflation rate, it runs many random futures through the same engine, so your income, costs, what-ifs and selling order all apply:
 
@@ -129,6 +129,7 @@ The **Retirement** tab sits under Analysis.
 - **Per-asset behaviour:** each asset's growth in the plan is its expected return; pick whether it behaves like stocks, bonds, property, cash or fixed.
 - **Results:** the chance the money lasts, in today's money or future money, a fan chart of outcomes, the share of futures that have run out by each year, and a *Where is it resilient?* grid of success rate against spending level and crash frequency.
 - **Cash buffer comparison:** the same futures with no buffer and with 1 to 5 years of costs in cash, to see what holding cash is worth.
+- **Table view:** the fan chart can be switched to a table with the 10th, 25th, middle, 75th and 90th percentile of the assets you sell from for each year, and the share of futures that have run out.
 - **Repeatable:** a seed makes the same settings give the same answer.
 
 Plans, ticks and simulator settings are saved with your workspace on the server (the browser keeps a working copy), so they follow you to any browser or address. Saved plans that only exist in a browser are added when you open the page. The projection is a planning aid, not a forecast: no loan amortisation.

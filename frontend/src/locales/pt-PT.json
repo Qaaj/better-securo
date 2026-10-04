@@ -1585,7 +1585,16 @@
       "noBuffer": "None",
       "bufferYearsCell": "{{years}} yr",
       "bufferTypical": "Typical amount left (today's money)",
-      "bufferHint": "Each column is {{runs}} futures. A buffer costs growth in good years and pays off in bad ones, so the right size depends on the crash settings below. Taxes and your selling order apply."
+      "bufferHint": "Each column is {{runs}} futures. A buffer costs growth in good years and pays off in bad ones, so the right size depends on the crash settings below. Taxes and your selling order apply.",
+      "viewChart": "Chart",
+      "viewTable": "Table",
+      "tableYear": "Year",
+      "tableP10": "Bad luck (1 in 10)",
+      "tableP25": "Below middle",
+      "tableMedian": "Middle",
+      "tableP75": "Above middle",
+      "tableP90": "Good luck (9 in 10)",
+      "tableRunOut": "Run out by"
     },
     "fullReport": {
       "exportHtml": "Full report (HTML)",
@@ -1623,7 +1632,9 @@
       "simSettings": "Stress test settings",
       "tax": "Tax",
       "taxHint": "Income tax, tax on yields and rent, and tax withheld on the gain when assets are sold, each year.",
-      "taxLines": "Tax rates set for a single line"
+      "taxLines": "Tax rates set for a single line",
+      "exportJson": "Data for sharing (JSON)",
+      "exportCsv": "Year by year (CSV)"
     },
     "tabTax": "Tax",
     "tax": {

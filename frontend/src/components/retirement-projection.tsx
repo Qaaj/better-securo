@@ -24,7 +24,8 @@ import {
 import type { IncomeLine, OutgoingLine } from '@/lib/retirement'
 import { formatCurrency } from '@/lib/format'
 import { downloadText, printHtml } from '@/lib/download'
-import { buildFullReportHtml } from '@/lib/retirement-full-report'
+import { buildFullReportHtml, type FullReportInput } from '@/lib/retirement-full-report'
+import { buildExportCsv, buildExportJson, type ExportExtras } from '@/lib/retirement-export'
 import { DEFAULT_SIM, SWEEP_RUNS, bufferSweep, defaultRiskClass, simulate, sweep } from '@/lib/retirement-simulation'
 import { buildReport, describeWhatIf, reportToHtml, reportToMarkdown } from '@/lib/retirement-report'
 import { AssetsChart, AssetsTable, type ChartMode } from '@/components/retirement-projection-charts'
@@ -148,60 +149,87 @@ export function RetirementProjection({
   const exportMarkdown = () => downloadText(`retirement-plan-${stamp()}.md`, reportToMarkdown(makeReport()))
   const exportPdf = () => printHtml(reportToHtml(makeReport()))
   const [preparing, setPreparing] = useState(false)
-  // The full report carries the stress test, so it is run here with the saved settings first.
-  const exportHtml = async () => {
+  // The full report and the data exports carry the stress test, so it is run here with the saved settings first.
+  const gatherReport = async (): Promise<{ input: FullReportInput; extras: ExportExtras }> => {
+    const params = read(SIM_KEY, DEFAULT_SIM)
+    const input = { ...base, whatIfs: taxedWhatIfs }
+    const types = Object.fromEntries(assets.map((x) => [x.id, x.type]))
+    const classOf = (id: string) => params.classes[id] ?? defaultRiskClass(types[id] ?? '')
+    const result = simulate(input, params, types)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const grid = await sweep(input, params, types, SWEEP_RUNS)
+    const buffers = await bufferSweep(input, params, types, SWEEP_RUNS)
+    const lineLabel = (id: string) => summary.outgoing.find((l) => l.item.id === id)?.item.description ?? summary.income.find((l) => l.id === id)?.label ?? id
+    const rates = plan.taxRates ?? {}
+    const report: FullReportInput = {
+      t: t as unknown as Parameters<typeof buildReport>[0]['t'],
+      currency,
+      locale,
+      now: new Date(),
+      assumptions: plan.assumptions,
+      whatIfs: plan.whatIfs,
+      scenario,
+      baseline,
+      assets: projectionAssets,
+      fixedLines: makeReport().fixed.length
+        ? [
+            ...summary.outgoing.filter((l) => !excluded.has(l.item.id) && flatSet.has(l.item.id)).map((l) => ({ label: l.item.description, monthly: l.monthly })),
+            ...summary.income.filter((l) => l.kind === 'recurring' && !excluded.has(l.id) && flatSet.has(l.id)).map((l) => ({ label: l.label, monthly: l.monthly })),
+            ...projectionAssets.filter((x) => x.fixedFlat && x.fixedMonthly).map((x) => ({ label: x.name, monthly: x.fixedMonthly ?? 0 })),
+          ]
+        : [],
+      living: plan.living,
+      endedLines: Object.entries(plan.lineEnd ?? {}).map(([id, year]) => ({
+        label: id.startsWith('asset:') ? names[id.split(':')[1]] ?? id : lineLabel(id),
+        year,
+      })),
+      taxLines: Object.entries(rates).map(([key, rate]) => {
+        const [kind, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)]
+        const label = kind === 'income' ? lineLabel(id) : kind === 'whatif' ? plan.whatIfs.find((w) => w.id === id)?.label ?? id : names[id] ?? id
+        return { label, kind: kind === 'whatif' ? 'income' : kind, rate }
+      }),
+      simulation: {
+        params,
+        result,
+        grid,
+        buffers,
+        behaviour: projectionAssets.filter((x) => x.drawable && x.value > 0).map((x) => ({ name: x.name, riskClass: classOf(x.id) })),
+        runsPerCell: SWEEP_RUNS,
+      },
+    }
+    const a = plan.assumptions
+    const extras: ExportExtras = {
+      defaultTaxPercent: { income: a.taxIncomePercent ?? 0, yield: a.taxAssetIncomePercent ?? 0, rent: a.taxRentPercent ?? 0, gains: a.taxGainsPercent ?? 0 },
+      incomeLines: summary.income
+        .filter((l) => l.kind === 'recurring')
+        .map((l) => ({ label: l.label, monthly: l.monthly, counted: !excluded.has(l.id), risesWithInflation: !flatSet.has(l.id), lastYear: plan.lineEnd?.[l.id], taxRatePercent: rates[`income:${l.id}`] })),
+      costLines: summary.outgoing.map((l) => ({ label: l.item.description, monthly: l.monthly, counted: !excluded.has(l.item.id), risesWithInflation: !flatSet.has(l.item.id), lastYear: plan.lineEnd?.[l.item.id] })),
+    }
+    return { input: report, extras }
+  }
+  const prepare = async (run: () => Promise<void>) => {
     setPreparing(true)
     try {
-      const params = read(SIM_KEY, DEFAULT_SIM)
-      const input = { ...base, whatIfs: taxedWhatIfs }
-      const types = Object.fromEntries(assets.map((x) => [x.id, x.type]))
-      const classOf = (id: string) => params.classes[id] ?? defaultRiskClass(types[id] ?? '')
-      const result = simulate(input, params, types)
-      await new Promise((resolve) => setTimeout(resolve, 0))
-      const grid = await sweep(input, params, types, SWEEP_RUNS)
-      const buffers = await bufferSweep(input, params, types, SWEEP_RUNS)
-      const lineLabel = (id: string) => summary.outgoing.find((l) => l.item.id === id)?.item.description ?? summary.income.find((l) => l.id === id)?.label ?? id
-      const html = buildFullReportHtml({
-        t: t as unknown as Parameters<typeof buildReport>[0]['t'],
-        currency,
-        locale,
-        now: new Date(),
-        assumptions: plan.assumptions,
-        whatIfs: plan.whatIfs,
-        scenario,
-        baseline,
-        assets: projectionAssets,
-        fixedLines: makeReport().fixed.length
-          ? [
-              ...summary.outgoing.filter((l) => !excluded.has(l.item.id) && flatSet.has(l.item.id)).map((l) => ({ label: l.item.description, monthly: l.monthly })),
-              ...summary.income.filter((l) => l.kind === 'recurring' && !excluded.has(l.id) && flatSet.has(l.id)).map((l) => ({ label: l.label, monthly: l.monthly })),
-              ...projectionAssets.filter((x) => x.fixedFlat && x.fixedMonthly).map((x) => ({ label: x.name, monthly: x.fixedMonthly ?? 0 })),
-            ]
-          : [],
-        living: plan.living,
-        endedLines: Object.entries(plan.lineEnd ?? {}).map(([id, year]) => ({
-          label: id.startsWith('asset:') ? names[id.split(':')[1]] ?? id : lineLabel(id),
-          year,
-        })),
-        taxLines: Object.entries(plan.taxRates ?? {}).map(([key, rate]) => {
-          const [kind, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)]
-          const label = kind === 'income' ? lineLabel(id) : kind === 'whatif' ? plan.whatIfs.find((w) => w.id === id)?.label ?? id : names[id] ?? id
-          return { label, kind: kind === 'whatif' ? 'income' : kind, rate }
-        }),
-        simulation: {
-          params,
-          result,
-          grid,
-          buffers,
-          behaviour: projectionAssets.filter((x) => x.drawable && x.value > 0).map((x) => ({ name: x.name, riskClass: classOf(x.id) })),
-          runsPerCell: SWEEP_RUNS,
-        },
-      })
-      downloadText(`retirement-report-${stamp()}.html`, html, 'text/html;charset=utf-8')
+      await run()
     } finally {
       setPreparing(false)
     }
   }
+  const exportHtml = () =>
+    prepare(async () => {
+      const { input } = await gatherReport()
+      downloadText(`retirement-report-${stamp()}.html`, buildFullReportHtml(input), 'text/html;charset=utf-8')
+    })
+  const exportJson = () =>
+    prepare(async () => {
+      const { input, extras } = await gatherReport()
+      downloadText(`retirement-plan-${stamp()}.json`, buildExportJson(input, extras), 'application/json;charset=utf-8')
+    })
+  const exportCsv = () =>
+    prepare(async () => {
+      const { input } = await gatherReport()
+      downloadText(`retirement-years-${stamp()}.csv`, buildExportCsv(input), 'text/csv;charset=utf-8')
+    })
   const saveScenario = () => {
     const name = scenarioName.trim()
     if (!name) return
@@ -257,6 +285,12 @@ export function RetirementProjection({
             <DropdownMenuContent align="end">
               <DropdownMenuItem disabled={preparing} onSelect={() => void exportHtml()}>
                 {preparing ? t('retirement.fullReport.preparing') : t('retirement.fullReport.exportHtml')}
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={preparing} onSelect={() => void exportJson()}>
+                {t('retirement.fullReport.exportJson')}
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={preparing} onSelect={() => void exportCsv()}>
+                {t('retirement.fullReport.exportCsv')}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={exportPdf}>{t('retirement.projection.exportPdf')}</DropdownMenuItem>
               <DropdownMenuItem onSelect={exportMarkdown}>{t('retirement.projection.exportMarkdown')}</DropdownMenuItem>
