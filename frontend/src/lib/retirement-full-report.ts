@@ -41,6 +41,7 @@ export interface FullReportInput {
   fixedLines: { label: string; monthly: number }[]
   /** Lines with a last year, as a label and the calendar year. */
   endedLines: { label: string; year: number }[]
+  living?: { monthly: number; inflates: boolean } | null
   /** Tax rates set for a single line, by kind (income, yield, rent, gains). */
   taxLines: { label: string; kind: string; rate: number }[]
   simulation: SimulationSection | null
@@ -224,6 +225,7 @@ export function buildFullReportHtml(input: FullReportInput): string {
     baseline,
     assets,
     fixedLines: input.fixedLines,
+    living: input.living,
   })
   const thisYear = now.getFullYear()
   const horizon = a.horizonYears

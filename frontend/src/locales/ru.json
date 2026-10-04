@@ -1512,7 +1512,15 @@
       "tax": "Tax",
       "taxRent": "Tax on rent",
       "bufferTitle": "Cash buffer",
-      "taxMoved": "Tax rates are set per line on the Tax tab."
+      "taxMoved": "Tax rates are set per line on the Tax tab.",
+      "living": "Living and travel",
+      "livingHint": "Spending on top of your recurring costs, such as day-to-day living and travel. Change it and watch what happens to the runway.",
+      "livingMonthly": "A month, in {{currency}} (today's money)",
+      "livingSlider": "Living and travel a month",
+      "livingInflates": "Living and travel rises with inflation",
+      "livingNow": "Now",
+      "livingTryThis": "Use this amount",
+      "livingStepsHint": "Each box shows the runway, and the assets left at the end of the plan, if living and travel were that much. Click one to use it."
     },
     "incomeRecurringTitle": "Recurring income",
     "incomeAssetsTitle": "Income from assets",

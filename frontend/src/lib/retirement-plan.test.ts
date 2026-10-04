@@ -35,4 +35,18 @@ describe('buildProjectionInputs', () => {
     const { projectionAssets } = buildProjectionInputs(plan({ taxFree: { a1: true } }), [], [asset], 'EUR', none, 2026)
     expect(projectionAssets[0]).toMatchObject({ costBasis: 400, taxFree: true })
   })
+
+  it('adds a living and travel figure to the costs, rising or fixed', () => {
+    const rising = buildProjectionInputs(plan({ living: { monthly: 2000, inflates: true } }), [item('rent', 'debit', 500)], [], 'EUR', none, 2026)
+    expect(rising.base.outgoingMonthly).toBe(2500)
+    expect(rising.base.outgoingFlatMonthly).toBe(0)
+    const fixed = buildProjectionInputs(plan({ living: { monthly: 2000, inflates: false } }), [item('rent', 'debit', 500)], [], 'EUR', none, 2026)
+    expect(fixed.base.outgoingMonthly).toBe(500)
+    expect(fixed.base.outgoingFlatMonthly).toBe(2000)
+  })
+
+  it('adds nothing when it is empty or zero', () => {
+    const none0 = buildProjectionInputs(plan({ living: { monthly: 0, inflates: true } }), [item('rent', 'debit', 500)], [], 'EUR', none, 2026)
+    expect(none0.base.outgoingMonthly).toBe(500)
+  })
 })
