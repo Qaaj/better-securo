@@ -46,6 +46,7 @@ import type {
   RecurringTransaction,
   RecurringSuggestion,
   Discovery,
+  RecurringHistory,
   CategorizerSettings,
   MonthlyReview,
   CategorizationJob,
@@ -1149,6 +1150,10 @@ export const recurring = {
   },
   generate: async (): Promise<{ generated: number }> => {
     const { data } = await api.post('/recurring-transactions/generate')
+    return data
+  },
+  history: async (id: string): Promise<RecurringHistory> => {
+    const { data } = await api.get(`/recurring-transactions/${id}/history`)
     return data
   },
   discoveries: async (): Promise<Discovery> => {

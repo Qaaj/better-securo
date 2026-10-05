@@ -16,13 +16,19 @@ from app.schemas.recurring_discovery import (
     DismissRequest,
     LinkSeriesRequest,
 )
+from app.schemas.recurring_history import RecurringHistoryRead
 from app.schemas.recurring_transaction import (
     RecurringSuggestionRead,
     RecurringTransactionCreate,
     RecurringTransactionRead,
     RecurringTransactionUpdate,
 )
-from app.services import recurring_discovery_service, recurring_suggestion_service, recurring_transaction_service
+from app.services import (
+    recurring_discovery_service,
+    recurring_history_service,
+    recurring_suggestion_service,
+    recurring_transaction_service,
+)
 
 router = APIRouter(prefix="/api/recurring-transactions", tags=["recurring-transactions"])
 
@@ -99,6 +105,20 @@ async def link_series_to_recurring(
     if recurring is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurring item not found")
     return recurring
+
+
+@router.get("/{recurring_id}/history", response_model=RecurringHistoryRead)
+async def recurring_history(
+    recurring_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """The charges linked to a recurring item and what they say: how long it has run,
+    what it came to and how its price moved."""
+    result = await recurring_history_service.history(session, recurring_id, ctx.workspace.id)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurring transaction not found")
+    return result
 
 
 @router.get("/suggestion/{transaction_id}", response_model=RecurringSuggestionRead)

@@ -20,10 +20,11 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import type { Category, CategoryGroup, DiscoverySeries, RecurringTransaction } from '@/types'
-import { Pencil, Trash2, Plus, RefreshCw, Info, Search } from 'lucide-react'
+import { Pencil, Trash2, Plus, RefreshCw, Info, Search, History, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PageHeader } from '@/components/page-header'
 import { MatchRow, NewProposals, UnassignedList } from '@/components/recurring-discovery'
+import { RecurringHistoryPanel } from '@/components/recurring-history'
 import { CategorySelect } from '@/components/category-select'
 import { DatePickerInput } from '@/components/ui/date-picker-input'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
@@ -118,6 +119,8 @@ function RecurringTab() {
     onSuccess: () => {
       invalidateFinancialQueries(queryClient)
       queryClient.invalidateQueries({ queryKey: ['recurring'] })
+      queryClient.invalidateQueries({ queryKey: ['recurring-history'] })
+      queryClient.invalidateQueries({ queryKey: ['recurring-discoveries'] })
       setDialogOpen(false)
       setEditing(null)
       toast.success(t('recurring.updated'))
@@ -152,6 +155,14 @@ function RecurringTab() {
   const [showMatches, setShowMatches] = useState(false)
   const [showNew, setShowNew] = useState(false)
   const [pendingKey, setPendingKey] = useState<string | null>(null)
+  const [openHistory, setOpenHistory] = useState<Set<string>>(new Set())
+  const toggleHistory = (id: string) =>
+    setOpenHistory((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   const discoveries = useQuery({
     queryKey: ['recurring-discoveries'],
     queryFn: recurringApi.discoveries,
@@ -324,7 +335,19 @@ function RecurringTab() {
               {recurringList.map((rt) => (
                 <React.Fragment key={rt.id}>
                 <tr className="border-b border-border last:border-0 hover:bg-muted transition-colors">
-                  <td className="py-3 pl-4 sm:pl-5 text-sm font-medium text-foreground">{rt.description}</td>
+                  <td className="py-3 pl-4 sm:pl-5 text-sm font-medium text-foreground">
+                    <button
+                      type="button"
+                      onClick={() => toggleHistory(rt.id)}
+                      className="inline-flex items-center gap-1.5 text-left hover:text-primary transition-colors"
+                      aria-expanded={openHistory.has(rt.id)}
+                      aria-label={t('recurring.history.toggle', { name: rt.description })}
+                      title={t('recurring.history.toggleHint')}
+                    >
+                      {rt.description}
+                      {openHistory.has(rt.id) ? <ChevronDown size={13} className="text-primary" /> : <History size={12} className="text-muted-foreground" />}
+                    </button>
+                  </td>
                   <td className={`py-3 text-xs sm:text-sm font-bold tabular-nums ${rt.type === 'credit' ? 'text-emerald-600' : 'text-rose-500'}`}>
                     {mask(`${rt.type === 'credit' ? '+' : '−'}${formatCurrency(rt.amount, rt.currency, locale)}`)}
                     {rt.currency !== userCurrency && rt.amount_primary != null && (
@@ -378,6 +401,19 @@ function RecurringTab() {
                     </td>
                   )}
                 </tr>
+                {openHistory.has(rt.id) && (
+                  <tr className="border-b border-border bg-muted/30">
+                    <td colSpan={6} className="pl-4 sm:pl-5 pr-4 sm:pr-5">
+                      <RecurringHistoryPanel
+                        item={rt}
+                        primaryCurrency={userCurrency}
+                        canWrite={canWrite}
+                        updating={updateMutation.isPending}
+                        onUseLatest={(amount) => updateMutation.mutate({ id: rt.id, amount })}
+                      />
+                    </td>
+                  </tr>
+                )}
                 {showMatches && canWrite && matchByRecurring.get(rt.id) && (
                   <MatchRow
                     match={matchByRecurring.get(rt.id)!}
