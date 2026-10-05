@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
     createFromSeries: vi.fn(),
     dismissDiscovery: vi.fn(),
     resetDismissed: vi.fn(),
+    history: vi.fn(),
     generate: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -59,6 +60,19 @@ beforeEach(() => {
   api.recurring.createFromSeries.mockResolvedValue(item)
   api.recurring.dismissDiscovery.mockResolvedValue(undefined)
   api.recurring.resetDismissed.mockResolvedValue({ restored: 2 })
+  api.recurring.update.mockResolvedValue(item)
+  api.recurring.history.mockResolvedValue({
+    recurring_id: 'r1',
+    charges: [
+      { id: 'c1', date: '2026-01-02', amount: 120, currency: 'EUR', amount_primary: 120 },
+      { id: 'c2', date: '2026-02-02', amount: 120, currency: 'EUR', amount_primary: 120 },
+      { id: 'c3', date: '2026-03-02', amount: 132, currency: 'EUR', amount_primary: 132 },
+    ],
+    count: 3, first_date: '2026-01-02', last_date: '2026-03-02', months_running: 2, total_paid: 372, total_last_12_months: 372,
+    average_amount: 124, min_amount: 120, max_amount: 132, first_amount: 120, latest_amount: 132, change_since_first_pct: 10,
+    price_changes: [{ date: '2026-03-02', from_amount: 120, to_amount: 132, change_pct: 10 }], amount_varies: false,
+    latest_vs_planned_pct: 4.8, overdue_days: 12,
+  })
   api.categories.list.mockResolvedValue([])
   api.categories.listIncludingHidden.mockResolvedValue([])
   api.categoryGroups.list.mockResolvedValue([])
@@ -121,4 +135,24 @@ it('lists what is not assigned at the bottom and can assign, hide and restore', 
 
   await user.click(screen.getByRole('button', { name: 'Restore 2 dismissed' }))
   await waitFor(() => expect(api.recurring.resetDismissed).toHaveBeenCalled())
+})
+
+it('shows how long an item has run, its price changes and a late charge, and can take the latest price', async () => {
+  const { user } = renderWithProviders(<RecurringPage />)
+  await user.click(await screen.findByRole('button', { name: 'Show history of Syndic charges' }))
+  expect(await screen.findByText('2 months')).toBeInTheDocument()
+  expect(screen.getByText('since 1/2/2026')).toBeInTheDocument()
+  expect(screen.getByText(/\+10% since/)).toBeInTheDocument()
+  expect(screen.getByText(/\(\+10%\)/)).toBeInTheDocument()
+  expect(screen.getByText(/12 days late/)).toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: 'Use latest amount' }))
+  await waitFor(() => expect(api.recurring.update).toHaveBeenCalledWith('r1', { amount: 132 }))
+})
+
+it('says so when no charges are linked yet', async () => {
+  api.recurring.history.mockResolvedValue({ recurring_id: 'r1', charges: [], count: 0, price_changes: [], amount_varies: false, total_paid: 0, total_last_12_months: 0 })
+  const { user } = renderWithProviders(<RecurringPage />)
+  await user.click(await screen.findByRole('button', { name: 'Show history of Syndic charges' }))
+  expect(await screen.findByText(/No charges are linked to this item yet/)).toBeInTheDocument()
 })

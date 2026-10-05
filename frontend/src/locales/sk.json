@@ -1846,6 +1846,30 @@
       "create": "Create new",
       "dismiss": "Dismiss",
       "dismissFor": "Dismiss {{name}}"
+    },
+    "history": {
+      "toggle": "Show history of {{name}}",
+      "toggleHint": "Show how long it has run and how its price moved",
+      "loading": "Loading history…",
+      "none": "No charges are linked to this item yet. Use Search for matches to link them.",
+      "running": "Running for",
+      "months_one": "{{count}} month",
+      "months_other": "{{count}} months",
+      "months": "{{count}} months",
+      "lessThanMonth": "under a month",
+      "since": "since {{date}}",
+      "charges": "Charges",
+      "lastOn": "last on {{date}}",
+      "last12": "Paid, last 12 months",
+      "total": "{{amount}} in total",
+      "price": "Latest price",
+      "onlyOne": "only one charge so far",
+      "unchanged": "unchanged since the first",
+      "range": "varies: {{min}} to {{max}}",
+      "sinceFirst": "{{change}} since {{first}}",
+      "overdue": "The next charge is {{days}} days late. It may have stopped, moved or changed amount.",
+      "plannedDiffers": "The latest charge is {{latest}}, {{change}} against the {{planned}} on this item.",
+      "useLatest": "Use latest amount"
     }
   },
   "rules": {

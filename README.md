@@ -142,6 +142,8 @@ Two buttons on the Recurring page search the transactions that no recurring item
 - **Search for new recurring:** shows repeating charges that fit none of your items (three or more occurrences on a regular schedule, still active), best first. **Create new** makes the item, forecast-only, and links every transaction of the series.
 - **Repeating charges not assigned yet** (bottom of the page): everything else that looks recurring, to assign to an existing item, create as a new one, or dismiss for good (restorable). Less certain and ended ones are behind a toggle.
 
+Click a recurring item's name to see its **history**: how long it has run, how many charges, what it came to in the last 12 months and in total, its price now against the first charge, each price change with its date, a step chart of the price, a warning when the next charge is late, and a button to take the latest amount when it differs from the one on the item. Only charges linked to the item count, which is what the matching above is for.
+
 ### Automatic categorization (local LLM)
 
 **Categories → Automate** categorizes uncategorized transactions with a model running on your own machine, typically [LM Studio](https://lmstudio.ai/) or anything that speaks the OpenAI chat API.

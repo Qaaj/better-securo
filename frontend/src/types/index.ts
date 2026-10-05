@@ -614,6 +614,27 @@ export interface RecurringSuggestion {
   existing_matches: ExistingRecurringMatch[]
 }
 
+export interface RecurringHistory {
+  recurring_id: string
+  charges: { id: string; date: string; amount: number | string; currency: string; amount_primary: number | string | null }[]
+  count: number
+  first_date: string | null
+  last_date: string | null
+  months_running: number | null
+  total_paid: number | string
+  total_last_12_months: number | string
+  average_amount: number | string | null
+  min_amount: number | string | null
+  max_amount: number | string | null
+  first_amount: number | string | null
+  latest_amount: number | string | null
+  change_since_first_pct: number | null
+  price_changes: { date: string; from_amount: number | string; to_amount: number | string; change_pct: number }[]
+  amount_varies: boolean
+  latest_vs_planned_pct: number | null
+  overdue_days: number | null
+}
+
 export interface DiscoverySeries {
   key: string
   name: string
