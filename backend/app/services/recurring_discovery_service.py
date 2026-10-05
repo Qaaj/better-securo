@@ -185,9 +185,18 @@ def _amount_score(wanted: Decimal, series: Series) -> float:
     return 0.0
 
 
-def score_match(rt: RecurringTransaction, series: Series) -> tuple[float, list[str]]:
-    """0..1 probability-like score that `series` is the recurring item, with the reasons."""
+def score_match(
+    rt: RecurringTransaction, series: Series, linked_words: Optional[set[str]] = None
+) -> tuple[float, list[str]]:
+    """0..1 probability-like score that `series` is the recurring item, with the reasons.
+
+    `linked_words` are the words of the descriptions of charges already linked to the item. An item
+    that already has charges linked is only matched to a series from the same merchant.
+    """
     if rt.type != series.type:
+        return 0.0, []
+    item_words = _words(rt.description) | (linked_words or set())
+    if linked_words and not (item_words & series.words):
         return 0.0, []
     wanted = Decimal(str(rt.amount_primary)) if rt.amount_primary is not None else rt.amount
     amount = _amount_score(wanted, series)
@@ -199,7 +208,7 @@ def score_match(rt: RecurringTransaction, series: Series) -> tuple[float, list[s
         schedule = 0.35
     else:
         return 0.0, []
-    name = 1.0 if _words(rt.description) & series.words else 0.0
+    name = 1.0 if item_words & series.words else 0.0
     score = 0.40 * amount + 0.35 * schedule + 0.25 * name
     reasons: list[str] = []
     if amount >= 0.9:
@@ -281,13 +290,35 @@ async def discover(session: AsyncSession, workspace_id: uuid.UUID, today: Option
         )
     ).scalars().all()
 
+    # What the charges already linked to each item are called.
+    linked_words: dict[uuid.UUID, set[str]] = {}
+    if items:
+        linked = (
+            await session.execute(
+                select(Transaction.recurring_transaction_id, Transaction.description).where(
+                    Transaction.workspace_id == workspace_id,
+                    Transaction.recurring_transaction_id.in_([rt.id for rt in items]),
+                    Transaction.status != "pending",
+                )
+            )
+        ).all()
+        for rid, description in linked:
+            linked_words.setdefault(rid, set()).update(_words(description or ""))
+
+    # A series named like one item is not offered to another item on its amount alone.
+    owners: dict[str, set[uuid.UUID]] = {}
+    for s in series:
+        owners[s.key] = {rt.id for rt in items if (_words(rt.description) | linked_words.get(rt.id, set())) & s.words}
+
     # Every plausible (item, series) pair, best first; each item and series is used once.
     pairs: list[tuple[float, RecurringTransaction, Series, list[str]]] = []
     for rt in items:
         for s in series:
             if (rt.id, s.key) in dismissed_matches:
                 continue
-            score, reasons = score_match(rt, s)
+            if owners[s.key] and rt.id not in owners[s.key]:
+                continue
+            score, reasons = score_match(rt, s, linked_words.get(rt.id))
             if score >= MATCH_THRESHOLD:
                 pairs.append((score, rt, s, reasons))
     pairs.sort(key=lambda p: (-p[0], p[1].description, p[2].key))

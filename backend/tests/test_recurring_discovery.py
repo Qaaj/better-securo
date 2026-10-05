@@ -213,3 +213,49 @@ async def test_api_round_trip(client, auth_headers, session, test_user, test_wor
     assert reset.json() == {"restored": 1}
     assert len(txs) == 5
     assert (await session.execute(select(RecurringTransaction))).scalars().first() is not None
+
+
+@pytest.mark.asyncio
+async def test_an_item_with_its_own_charges_linked_is_not_offered_another_merchants_series(session, test_user, test_workspace, test_account):
+    own = await _series(session, test_user, test_workspace, test_account, "Starlink Internet", "62.00", date(2026, 1, 25), 5)
+    for tx in own:
+        tx.recurring_transaction_id = None
+    rt = await _recurring(session, test_user, test_workspace, test_account, "Starlink", "62.00")
+    for tx in own:
+        tx.recurring_transaction_id = rt.id
+    await session.commit()
+    # A different merchant with a similar amount and the same schedule.
+    await _series(session, test_user, test_workspace, test_account, "Telenet BV", "63.27", date(2026, 1, 28), 6)
+
+    result = await discovery.discover(session, test_workspace.id, today=date(2026, 7, 1))
+
+    assert result["matches"] == []
+    assert [s["name"] for s in result["new_series"]] == ["Telenet BV"]
+
+
+@pytest.mark.asyncio
+async def test_more_of_the_same_merchant_still_matches_an_item_that_has_charges_linked(session, test_user, test_workspace, test_account):
+    linked = await _series(session, test_user, test_workspace, test_account, "Starlink Internet", "62.00", date(2026, 4, 25), 3)
+    rt = await _recurring(session, test_user, test_workspace, test_account, "Dish", "62.00")
+    for tx in linked:
+        tx.recurring_transaction_id = rt.id
+    await session.commit()
+    # Older charges from the same merchant, not linked yet.
+    await _series(session, test_user, test_workspace, test_account, "Starlink Internet", "62.00", date(2025, 10, 25), 4)
+
+    result = await discovery.discover(session, test_workspace.id, today=date(2026, 7, 1))
+
+    assert [m["recurring_id"] for m in result["matches"]] == [rt.id]
+    assert "name" in result["matches"][0]["reasons"]
+
+
+@pytest.mark.asyncio
+async def test_a_series_named_like_another_item_is_not_offered_to_an_item_on_amount_alone(session, test_user, test_workspace, test_account):
+    await _series(session, test_user, test_workspace, test_account, "Netflix Premium", "17.99", date(2026, 1, 24), 6)
+    await _recurring(session, test_user, test_workspace, test_account, "Netflix", "17.99")
+    spotify = await _recurring(session, test_user, test_workspace, test_account, "Spotify", "18.00")
+
+    result = await discovery.discover(session, test_workspace.id, today=date(2026, 7, 1))
+
+    assert spotify.id not in {m["recurring_id"] for m in result["matches"]}
+    assert len(result["matches"]) == 1
