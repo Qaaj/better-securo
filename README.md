@@ -126,7 +126,7 @@ The **Retirement** tab sits under Analysis.
 
 - **Crashes and slumps:** a yearly chance of a crash (a depth range you set) that hits stocks fully, property partly and bonds a little, followed by a few years of weaker growth.
 - **Uneven inflation:** a wandering rate around the plan's, with occasional multi-year spikes.
-- **Per-asset behaviour:** each asset's growth in the plan is its expected return; pick whether it behaves like stocks, bonds, property, cash or fixed.
+- **Per-asset behaviour:** pick whether each asset behaves like stocks, bonds, property, cash or fixed. Its growth rate in the plan is treated as its long-run average, crashes included (as historical averages are), so the typical future matches the projection and crashes show up as risk around it. A tickbox switches this off to put crashes on top of the rate, which is much harsher.
 - **Results:** the chance the money lasts, in today's money or future money, a fan chart of outcomes, the share of futures that have run out by each year, and a *Where is it resilient?* grid of success rate against spending level and crash frequency.
 - **Cash buffer comparison:** the same futures with no buffer and with 1 to 5 years of costs in cash, to see what holding cash is worth.
 - **Table view:** the fan chart can be switched to a table with the 10th, 25th, middle, 75th and 90th percentile of the assets you sell from for each year, and the share of futures that have run out.

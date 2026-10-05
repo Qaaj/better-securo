@@ -108,10 +108,11 @@ export function buildExportJson(input: FullReportInput, extras: ExportExtras): s
     },
     stressTest: simulation
       ? {
-          what: 'Monte Carlo: many random futures with market crashes, slumps and uneven inflation, each run through the same projection. The asset growth rate in the plan is its expected return.',
+          what: 'Monte Carlo: many random futures with market crashes, slumps and uneven inflation, each run through the same projection. When growthRateIncludesCrashes is true, an asset\'s growth rate in the plan is its long-run average yearly growth including crashes, so the typical future matches the projection; otherwise it is an ordinary year\'s return and crashes come on top.',
           settings: {
             futures: simulation.result.runs,
             seed: simulation.params.seed,
+            growthRateIncludesCrashes: simulation.params.rateIncludesCrashes,
             marketSwingsScale: simulation.params.volatilityScale,
             crashChancePercentPerYear: simulation.params.crashChancePercent,
             crashDepthPercent: [simulation.params.crashMinPercent, simulation.params.crashMaxPercent],

@@ -360,6 +360,7 @@ export function buildFullReportHtml(input: FullReportInput): string {
     const settings = [
       { label: r('futures'), value: String(sim.result.runs) },
       { label: r('seed'), value: String(sim.params.seed) },
+      { label: r('rateIncludesCrashes'), value: sim.params.rateIncludesCrashes ? t('retirement.report.yes') : t('retirement.report.no') },
       { label: t('retirement.simulate.volatility'), value: `×${sim.params.volatilityScale}` },
       { label: t('retirement.simulate.crashChanceLabel'), value: `${sim.params.crashChancePercent}%` },
       { label: r('crashDepth'), value: `${sim.params.crashMinPercent}–${sim.params.crashMaxPercent}%` },

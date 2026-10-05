@@ -33,8 +33,8 @@ describe('retirement simulation', () => {
 
   it('succeeds less often when crashes are likely and when spending is higher', () => {
     const tight = plan({ outgoingMonthly: 4500 })
-    const safe = simulate(tight, { ...calm, volatilityScale: 1, crashChancePercent: 0 })
-    const rough = simulate(tight, { ...calm, volatilityScale: 1, crashChancePercent: 20 })
+    const safe = simulate(tight, { ...calm, runs: 600, volatilityScale: 1, crashChancePercent: 0, rateIncludesCrashes: false })
+    const rough = simulate(tight, { ...calm, runs: 600, volatilityScale: 1, crashChancePercent: 20, rateIncludesCrashes: false })
     expect(rough.successRate).toBeLessThan(safe.successRate)
     const more = simulate(scaleSpending(tight, 1.4), { ...calm, volatilityScale: 1 })
     expect(more.successRate).toBeLessThanOrEqual(safe.successRate)
@@ -105,5 +105,40 @@ describe('retirement simulation', () => {
     expect(riskClassOf({ id: 't', name: 't', value: 1, drawable: true, riskClass: 'bonds' }, noisy, {})).toBe('bonds')
     // What is set in the stress test wins.
     expect(riskClassOf({ id: 't', name: 't', value: 1, drawable: true, riskClass: 'bonds' }, { ...noisy, classes: { t: 'cash' } }, {})).toBe('cash')
+  })
+})
+
+describe('anchoring growth to the plan', () => {
+  const hold = (growth: number) => ({
+    recurringIncomeMonthly: 0,
+    outgoingMonthly: 0,
+    assets: [{ id: 'a', name: 'ETF', value: 100_000, drawable: true, growthPercent: growth }],
+    assumptions: { horizonYears: 30, inflationPercent: 0, incomeIndexed: true },
+    whatIfs: [],
+  })
+  const params: SimParams = { ...DEFAULT_SIM, runs: 1500, inflationSpread: 0, spikeChancePercent: 0, classes: { a: 'stocks' } }
+
+  it('keeps the typical outcome near the projection even with crashes and swings', () => {
+    const deterministic = 100_000 * 1.06 ** 30
+    const median = simulate(hold(6), params).nominal.bands[29].p50
+    expect(median / deterministic).toBeGreaterThan(0.85)
+    expect(median / deterministic).toBeLessThan(1.15)
+  })
+
+  it('is far lower when the rate is an ordinary year and crashes come on top', () => {
+    const anchored = simulate(hold(6), params).nominal.bands[29].p50
+    const onTop = simulate(hold(6), { ...params, rateIncludesCrashes: false }).nominal.bands[29].p50
+    expect(onTop).toBeLessThan(anchored * 0.7)
+  })
+
+  it('still spreads the outcomes, so crashes remain a risk', () => {
+    const bands = simulate(hold(6), params).nominal.bands[29]
+    expect(bands.p10).toBeLessThan(bands.p50 * 0.7)
+    expect(bands.p90).toBeGreaterThan(bands.p50 * 1.3)
+  })
+
+  it('leaves fixed assets alone', () => {
+    const fixed = simulate(hold(6), { ...params, classes: { a: 'fixed' } }).nominal.bands[29]
+    expect(fixed.p50).toBeCloseTo(100_000 * 1.06 ** 30, 0)
   })
 })

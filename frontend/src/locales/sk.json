@@ -1624,14 +1624,14 @@
       "spikeExtra": "Spike adds (points)",
       "spikeExtraHint": "Extra inflation during a spike.",
       "classesTitle": "How each asset behaves",
-      "classesHint": "Its growth rate in the plan is its expected return. The type decides how wildly it swings and how much of a crash it takes. Fixed means no swings.",
+      "classesHint": "Its growth rate in the plan is its long-run average. The type decides how wildly it swings and how much of a crash it takes. Fixed means no swings.",
       "classFor": "Behaviour of {{name}}",
       "class_stocks": "Stocks",
       "class_bonds": "Bonds",
       "class_property": "Property",
       "class_cash": "Cash",
       "class_fixed": "Fixed",
-      "disclaimer": "A stress test, not a forecast. Crashes hit stocks fully, property partly and bonds a little; cash and fixed assets are not hit. Taxes are not modelled.",
+      "disclaimer": "A stress test, not a forecast. Crashes hit stocks fully, property partly and bonds a little; cash and fixed assets are not hit. Taxes apply as set on the Tax tab.",
       "todaysMoney": "Today's money",
       "futureMoney": "Future money",
       "fanHintToday": "Amounts are in today's money: each future's own inflation is taken out. The dark band holds half of the futures, the light band eight in ten.",
@@ -1650,7 +1650,9 @@
       "tableMedian": "Middle",
       "tableP75": "Above middle",
       "tableP90": "Good luck (9 in 10)",
-      "tableRunOut": "Run out by"
+      "tableRunOut": "Run out by",
+      "rateIncludesCrashes": "Growth rates already include crashes",
+      "rateIncludesCrashesHint": "Treats each asset's growth in the plan as its long-run average, crashes included (as historical averages are), so the typical future matches the projection and crashes show up as risk around it. Untick to add crashes on top of the rate, which is much harsher."
     },
     "fullReport": {
       "exportHtml": "Full report (HTML)",
@@ -1690,7 +1692,8 @@
       "taxHint": "Income tax, tax on yields and rent, and tax withheld on the gain when assets are sold, each year.",
       "taxLines": "Tax rates set for a single line",
       "exportJson": "Data for sharing (JSON)",
-      "exportCsv": "Year by year (CSV)"
+      "exportCsv": "Year by year (CSV)",
+      "rateIncludesCrashes": "Growth rates include crashes"
     },
     "tabTax": "Tax",
     "tax": {

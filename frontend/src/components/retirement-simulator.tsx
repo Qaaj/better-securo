@@ -385,6 +385,19 @@ export function RetirementSimulator({
           <Field label={t('retirement.simulate.spikeExtra')} hint={t('retirement.simulate.spikeExtraHint')} value={params.spikeExtraPoints} min={0} max={20} step={1} onChange={(v) => set('spikeExtraPoints', v)} />
         </div>
 
+        <label className="flex items-start gap-2 text-xs cursor-pointer">
+          <input
+            type="checkbox"
+            checked={params.rateIncludesCrashes}
+            onChange={(e) => set('rateIncludesCrashes', e.target.checked)}
+            className="size-4 accent-primary shrink-0 mt-0.5"
+          />
+          <span>
+            <span className="font-medium text-foreground">{t('retirement.simulate.rateIncludesCrashes')}</span>
+            <span className="block text-[11px] text-muted-foreground">{t('retirement.simulate.rateIncludesCrashesHint')}</span>
+          </span>
+        </label>
+
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-1">{t('retirement.simulate.classesTitle')}</p>
           <p className="text-[11px] text-muted-foreground mb-2">{t('retirement.simulate.classesHint')}</p>
