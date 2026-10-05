@@ -45,6 +45,7 @@ import type {
   InvoiceSummary,
   RecurringTransaction,
   RecurringSuggestion,
+  Discovery,
   CategorizerSettings,
   MonthlyReview,
   CategorizationJob,
@@ -1148,6 +1149,35 @@ export const recurring = {
   },
   generate: async (): Promise<{ generated: number }> => {
     const { data } = await api.post('/recurring-transactions/generate')
+    return data
+  },
+  discoveries: async (): Promise<Discovery> => {
+    const { data } = await api.get('/recurring-transactions/discoveries')
+    return data
+  },
+  linkSeries: async (recurringId: string, transactionIds: string[]): Promise<RecurringTransaction> => {
+    const { data } = await api.post(`/recurring-transactions/${recurringId}/link-series`, { transaction_ids: transactionIds })
+    return data
+  },
+  createFromSeries: async (body: {
+    description: string
+    amount: number | string
+    currency: string
+    type: 'debit' | 'credit'
+    frequency: string
+    day_of_month: number | null
+    account_id: string
+    category_id: string | null
+    transaction_ids: string[]
+  }): Promise<RecurringTransaction> => {
+    const { data } = await api.post('/recurring-transactions/discoveries/create', body)
+    return data
+  },
+  dismissDiscovery: async (body: { kind: 'series' | 'match'; key: string; recurring_id?: string }): Promise<void> => {
+    await api.post('/recurring-transactions/discoveries/dismiss', body)
+  },
+  resetDismissed: async (): Promise<{ restored: number }> => {
+    const { data } = await api.post('/recurring-transactions/discoveries/reset')
     return data
   },
 }

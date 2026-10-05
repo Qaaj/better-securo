@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_session
@@ -9,13 +10,19 @@ from app.core.workspace_context import (
     current_workspace,
     current_writable_workspace,
 )
+from app.schemas.recurring_discovery import (
+    CreateFromSeriesRequest,
+    DiscoveryRead,
+    DismissRequest,
+    LinkSeriesRequest,
+)
 from app.schemas.recurring_transaction import (
     RecurringSuggestionRead,
     RecurringTransactionCreate,
     RecurringTransactionRead,
     RecurringTransactionUpdate,
 )
-from app.services import recurring_suggestion_service, recurring_transaction_service
+from app.services import recurring_discovery_service, recurring_suggestion_service, recurring_transaction_service
 
 router = APIRouter(prefix="/api/recurring-transactions", tags=["recurring-transactions"])
 
@@ -26,6 +33,72 @@ async def list_recurring_transactions(
     session: AsyncSession = Depends(get_async_session),
 ):
     return await recurring_transaction_service.get_recurring_transactions(session, ctx.workspace.id)
+
+
+@router.get("/discoveries", response_model=DiscoveryRead)
+async def discover_recurring(
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Search the unlinked transactions: the most likely transactions for each recurring item,
+    and repeating charges that fit no recurring item."""
+    return await recurring_discovery_service.discover(session, ctx.workspace.id)
+
+
+@router.post("/discoveries/create", response_model=RecurringTransactionRead, status_code=status.HTTP_201_CREATED)
+async def create_recurring_from_series(
+    data: CreateFromSeriesRequest,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Make a recurring item from a found series and link all of its transactions to it."""
+    try:
+        return await recurring_discovery_service.create_from_series(session, ctx.workspace.id, ctx.user_id, data)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A recurring item like this already exists")
+
+
+@router.post("/discoveries/dismiss", status_code=status.HTTP_204_NO_CONTENT)
+async def dismiss_discovery(
+    data: DismissRequest,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Do not offer this series (or this series for this recurring item) again."""
+    if data.kind == "match" and data.recurring_id is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="recurring_id is required")
+    await recurring_discovery_service.dismiss(session, ctx.workspace.id, data.kind, data.key, data.recurring_id)
+
+
+@router.post("/discoveries/reset")
+async def reset_discovery_dismissals(
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Offer everything that was dismissed again."""
+    return {"restored": await recurring_discovery_service.reset_dismissals(session, ctx.workspace.id)}
+
+
+@router.post("/{recurring_id}/link-series", response_model=RecurringTransactionRead)
+async def link_series_to_recurring(
+    recurring_id: uuid.UUID,
+    data: LinkSeriesRequest,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Mark several transactions as occurrences of an existing recurring item."""
+    try:
+        recurring = await recurring_discovery_service.link_series(
+            session, recurring_id, data.transaction_ids, ctx.workspace.id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if recurring is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recurring item not found")
+    return recurring
 
 
 @router.get("/suggestion/{transaction_id}", response_model=RecurringSuggestionRead)

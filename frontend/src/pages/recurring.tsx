@@ -19,10 +19,11 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import type { Category, CategoryGroup, RecurringTransaction } from '@/types'
-import { Pencil, Trash2, Plus, RefreshCw, Info } from 'lucide-react'
+import type { Category, CategoryGroup, DiscoverySeries, RecurringTransaction } from '@/types'
+import { Pencil, Trash2, Plus, RefreshCw, Info, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PageHeader } from '@/components/page-header'
+import { MatchRow, NewProposals, UnassignedList } from '@/components/recurring-discovery'
 import { CategorySelect } from '@/components/category-select'
 import { DatePickerInput } from '@/components/ui/date-picker-input'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
@@ -147,6 +148,89 @@ function RecurringTab() {
     onError: () => toast.error(t('common.error')),
   })
 
+  // The finder: matches for existing items, and repeating charges nothing is assigned to.
+  const [showMatches, setShowMatches] = useState(false)
+  const [showNew, setShowNew] = useState(false)
+  const [pendingKey, setPendingKey] = useState<string | null>(null)
+  const discoveries = useQuery({
+    queryKey: ['recurring-discoveries'],
+    queryFn: recurringApi.discoveries,
+    enabled: canWrite,
+  })
+  const afterChange = () => {
+    invalidateFinancialQueries(queryClient)
+    queryClient.invalidateQueries({ queryKey: ['recurring'] })
+    queryClient.invalidateQueries({ queryKey: ['recurring-discoveries'] })
+  }
+  const settle = { onSettled: () => setPendingKey(null), onError: (err: unknown) => toast.error(extractApiError(err, t('common.error'))) }
+  const linkMutation = useMutation({
+    mutationFn: ({ recurringId, series }: { recurringId: string; series: DiscoverySeries }) => {
+      setPendingKey(series.key)
+      return recurringApi.linkSeries(recurringId, series.transaction_ids)
+    },
+    onSuccess: (_data, vars) => {
+      afterChange()
+      toast.success(t('recurring.discover.linked', { count: vars.series.occurrences }))
+    },
+    ...settle,
+  })
+  const createFromSeriesMutation = useMutation({
+    mutationFn: (series: DiscoverySeries) => {
+      const accountId = series.account_id ?? accountsList?.[0]?.id
+      if (!accountId || !series.frequency) return Promise.reject(new Error('no account'))
+      setPendingKey(series.key)
+      return recurringApi.createFromSeries({
+        description: series.name,
+        amount: series.typical_amount,
+        currency: series.currency,
+        type: series.type,
+        frequency: series.frequency,
+        day_of_month: series.day_of_month,
+        account_id: accountId,
+        category_id: series.category_id,
+        transaction_ids: series.transaction_ids,
+      })
+    },
+    onSuccess: () => {
+      afterChange()
+      toast.success(t('recurring.created'))
+    },
+    ...settle,
+  })
+  const dismissMutation = useMutation({
+    mutationFn: (body: { kind: 'series' | 'match'; key: string; recurring_id?: string }) => {
+      setPendingKey(body.key)
+      return recurringApi.dismissDiscovery(body)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recurring-discoveries'] }),
+    ...settle,
+  })
+  const restoreMutation = useMutation({
+    mutationFn: () => recurringApi.resetDismissed(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recurring-discoveries'] }),
+    onError: () => toast.error(t('common.error')),
+  })
+  const search = async (kind: 'matches' | 'new') => {
+    if (kind === 'matches') setShowMatches(true)
+    else setShowNew(true)
+    const result = await discoveries.refetch()
+    const data = result.data
+    if (!data) return
+    if (kind === 'matches' && data.matches.length === 0) toast.info(t('recurring.discover.noMatches'))
+  }
+  const discovery = discoveries.data
+  const matchByRecurring = new Map((discovery?.matches ?? []).map((m) => [m.recurring_id, m]))
+  const newSeries = discovery?.new_series ?? []
+  const proposals = showNew ? newSeries.filter((x) => !x.lapsed && (x.confidence === 'high' || x.confidence === 'medium')).slice(0, 8) : []
+  const proposalKeys = new Set(proposals.map((x) => x.key))
+  const listProps = {
+    recurringItems: recurringList ?? [],
+    pendingKey,
+    onCreate: (series: DiscoverySeries) => createFromSeriesMutation.mutate(series),
+    onAssign: (series: DiscoverySeries, recurringId: string) => linkMutation.mutate({ recurringId, series }),
+    onDismiss: (series: DiscoverySeries) => dismissMutation.mutate({ kind: 'series', key: series.key }),
+  }
+
   const frequencyLabel = (f: string) => {
     const map: Record<string, string> = {
       monthly: t('recurring.monthly'),
@@ -187,12 +271,26 @@ function RecurringTab() {
           )}
         </div>
       )}
+      {showNew && (
+        <NewProposals
+          series={proposals}
+          {...listProps}
+        />
+      )}
       <SectionCard>
         <SectionHeader
           title={t('recurring.title')}
           action={
             canWrite ? (
               <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={() => void search('matches')} disabled={discoveries.isFetching}>
+                  <Search size={12} />
+                  <span className="hidden sm:inline">{t('recurring.discover.searchMatches')}</span>
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={() => void search('new')} disabled={discoveries.isFetching}>
+                  <Search size={12} />
+                  <span className="hidden sm:inline">{t('recurring.discover.searchNew')}</span>
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -224,7 +322,8 @@ function RecurringTab() {
             </thead>
             <tbody>
               {recurringList.map((rt) => (
-                <tr key={rt.id} className="border-b border-border last:border-0 hover:bg-muted transition-colors">
+                <React.Fragment key={rt.id}>
+                <tr className="border-b border-border last:border-0 hover:bg-muted transition-colors">
                   <td className="py-3 pl-4 sm:pl-5 text-sm font-medium text-foreground">{rt.description}</td>
                   <td className={`py-3 text-xs sm:text-sm font-bold tabular-nums ${rt.type === 'credit' ? 'text-emerald-600' : 'text-rose-500'}`}>
                     {mask(`${rt.type === 'credit' ? '+' : '−'}${formatCurrency(rt.amount, rt.currency, locale)}`)}
@@ -279,6 +378,16 @@ function RecurringTab() {
                     </td>
                   )}
                 </tr>
+                {showMatches && canWrite && matchByRecurring.get(rt.id) && (
+                  <MatchRow
+                    match={matchByRecurring.get(rt.id)!}
+                    colSpan={6}
+                    pending={pendingKey === matchByRecurring.get(rt.id)!.series.key}
+                    onAccept={() => linkMutation.mutate({ recurringId: rt.id, series: matchByRecurring.get(rt.id)!.series })}
+                    onSkip={() => dismissMutation.mutate({ kind: 'match', key: matchByRecurring.get(rt.id)!.series.key, recurring_id: rt.id })}
+                  />
+                )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -286,6 +395,16 @@ function RecurringTab() {
           <p className="text-sm text-muted-foreground text-center py-10">{t('recurring.empty')}</p>
         )}
       </SectionCard>
+
+      {canWrite && discovery && (
+        <UnassignedList
+          series={newSeries.filter((x) => !proposalKeys.has(x.key))}
+          dismissed={discovery.dismissed}
+          onReset={() => restoreMutation.mutate()}
+          resetting={restoreMutation.isPending}
+          {...listProps}
+        />
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={() => { setDialogOpen(false); setEditing(null) }}>
         <DialogContent>

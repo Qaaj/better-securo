@@ -614,6 +614,46 @@ export interface RecurringSuggestion {
   existing_matches: ExistingRecurringMatch[]
 }
 
+export interface DiscoverySeries {
+  key: string
+  name: string
+  type: 'debit' | 'credit'
+  frequency: RecurringTransaction['frequency'] | null
+  confidence: 'high' | 'medium' | 'low' | 'none'
+  occurrences: number
+  first_date: string
+  last_date: string
+  typical_amount: number | string
+  currency: string
+  amount_varies: boolean
+  day_of_month: number | null
+  next_occurrence: string | null
+  account_id: string | null
+  category_id: string | null
+  yearly_amount: number | string
+  lapsed: boolean
+  transaction_ids: string[]
+  recent: { id: string; date: string; amount: number | string; description: string }[]
+}
+
+export interface DiscoveryMatch {
+  recurring_id: string
+  recurring_description: string
+  recurring_amount: number | string
+  recurring_currency: string
+  recurring_frequency: string
+  score: number
+  confidence: 'high' | 'medium' | 'low'
+  reasons: string[]
+  series: DiscoverySeries
+}
+
+export interface Discovery {
+  matches: DiscoveryMatch[]
+  new_series: DiscoverySeries[]
+  dismissed: number
+}
+
 export interface ProjectedTransaction {
   recurring_id: string
   account_id: string | null
