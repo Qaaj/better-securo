@@ -134,6 +134,14 @@ The **Retirement** tab sits under Analysis.
 
 Plans, ticks and simulator settings are saved with your workspace on the server (the browser keeps a working copy), so they follow you to any browser or address. Saved plans that only exist in a browser are added when you open the page. The projection is a planning aid, not a forecast: no loan amortisation.
 
+### Finding recurring charges
+
+Two buttons on the Recurring page search the transactions that no recurring item is linked to yet:
+
+- **Search for matches:** for each recurring item, shows inline the series of transactions most likely to be it, judged by amount, repeat schedule and name (the names do not have to agree), with how sure it is and why. **Link N** attaches all of the series at once and moves the schedule past the latest one; **Not this one** is remembered.
+- **Search for new recurring:** shows repeating charges that fit none of your items (three or more occurrences on a regular schedule, still active), best first. **Create new** makes the item, forecast-only, and links every transaction of the series.
+- **Repeating charges not assigned yet** (bottom of the page): everything else that looks recurring, to assign to an existing item, create as a new one, or dismiss for good (restorable). Less certain and ended ones are behind a toggle.
+
 ### Automatic categorization (local LLM)
 
 **Categories → Automate** categorizes uncategorized transactions with a model running on your own machine, typically [LM Studio](https://lmstudio.ai/) or anything that speaks the OpenAI chat API.
