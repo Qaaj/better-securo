@@ -1,8 +1,9 @@
 /**
  * A Monte Carlo run of the retirement projection.
  *
- * The plan's own growth rate for each asset is its expected return. Each
- * simulated future then draws, year by year, a random return around it (most
+ * The plan's own growth rate for each asset is its long-run average yearly
+ * growth, crashes included (a historical figure already contains them), unless
+ * that is switched off. Each simulated future then draws, year by year, a random return around it (most
  * of it shared across assets, like a real market), an occasional crash that
  * hits risky assets hard and safer ones less, a slump of weaker growth after a
  * crash, and an inflation path that wanders and can spike. Every future is
@@ -43,6 +44,11 @@ export interface SimParams {
   /** Chance a year starts a spell of higher inflation, percent, and the extra points it adds for three years. */
   spikeChancePercent: number
   spikeExtraPoints: number
+  /**
+   * The growth rate in the plan is a long-run average that already contains crashes, so the typical future matches
+   * the projection and crashes show up as risk around it. Off: the rate is an ordinary year's return and crashes come on top.
+   */
+  rateIncludesCrashes: boolean
   /** Show outcomes in today's money rather than future money. */
   todaysMoney: boolean
   /** The risk class each asset (by id) is treated as; unset assets follow their type. */
@@ -61,6 +67,7 @@ export const DEFAULT_SIM: SimParams = {
   inflationSpread: 1.5,
   spikeChancePercent: 3,
   spikeExtraPoints: 5,
+  rateIncludesCrashes: true,
   todaysMoney: true,
   classes: {},
 }
@@ -92,6 +99,59 @@ function normal(rng: () => number): number {
 
 /** Share of an asset's yearly swing that moves with the market as a whole. */
 const MARKET_WEIGHT = 0.7
+
+const calibrationCache = new Map<string, number>()
+
+/**
+ * The ordinary-year return that makes the long-run compound growth of an asset,
+ * with this crash and swing model, equal `expected`. It is solved once on a long
+ * fixed run of random years (so it does not vary between calls), then reused.
+ */
+export function calibratedMean(cls: RiskClass, expected: number, params: SimParams): number {
+  if (cls === 'fixed') return expected
+  const key = [cls, expected, params.volatilityScale, params.crashChancePercent, params.crashMinPercent, params.crashMaxPercent, params.slumpYears, params.slumpCutPercent].join('|')
+  const hit = calibrationCache.get(key)
+  if (hit !== undefined) return hit
+
+  const traits = CLASS_TRAITS[cls]
+  const sigma = traits.volatility * params.volatilityScale
+  const n = 20000
+  const rng = makeRng(987654321)
+  const z = new Float64Array(n)
+  const crash = new Float64Array(n)
+  const slump = new Uint8Array(n)
+  let slumpLeft = 0
+  const span = Math.max(0, params.crashMaxPercent - params.crashMinPercent)
+  for (let i = 0; i < n; i++) {
+    z[i] = normal(rng)
+    const crashed = rng() < params.crashChancePercent / 100
+    crash[i] = crashed ? params.crashMinPercent + rng() * span : -1
+    slump[i] = slumpLeft > 0 ? 1 : 0
+    if (slumpLeft > 0) slumpLeft -= 1
+    if (crashed) slumpLeft = params.slumpYears
+  }
+  const cut = 1 - params.slumpCutPercent / 100
+  const growth = (mean: number) => {
+    let total = 0
+    for (let i = 0; i < n; i++) {
+      const rate = crash[i] >= 0 && traits.crashShare > 0 ? -crash[i] * traits.crashShare : (slump[i] ? mean * cut : mean) + sigma * z[i]
+      total += Math.log(1 + Math.max(-95, rate) / 100)
+    }
+    return total / n
+  }
+  const target = Math.log(1 + expected / 100)
+  let low = -60
+  let high = 120
+  for (let step = 0; step < 40; step++) {
+    const mid = (low + high) / 2
+    if (growth(mid) < target) low = mid
+    else high = mid
+  }
+  const solved = (low + high) / 2
+  if (calibrationCache.size > 500) calibrationCache.clear()
+  calibrationCache.set(key, solved)
+  return solved
+}
 
 /** Draw one possible future. */
 export function drawMarket(
@@ -143,7 +203,8 @@ export function drawMarket(
       const traits = CLASS_TRAITS[cls]
       if (cls === 'fixed') return undefined
       const expected = asset.growthPercent ?? 0
-      const mean = slump[year] ? expected * (1 - params.slumpCutPercent / 100) : expected
+      const anchored = params.rateIncludesCrashes ? calibratedMean(cls, expected, params) : expected
+      const mean = slump[year] ? anchored * (1 - params.slumpCutPercent / 100) : anchored
       const sigma = traits.volatility * params.volatilityScale
       const z = MARKET_WEIGHT * marketShock[year] + Math.sqrt(1 - MARKET_WEIGHT ** 2) * noise(asset.id)[year]
       const ordinary = mean + sigma * z
