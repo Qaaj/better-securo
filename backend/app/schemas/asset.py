@@ -1,7 +1,7 @@
 import uuid
 from datetime import date as _date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from typing import Literal
 
@@ -9,6 +9,27 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 IncomeMode = Literal["yield", "fixed"]
 IncomeFrequency = Literal["monthly", "quarterly", "semiannual", "yearly"]
+
+
+DetailValue = str | int | float | bool | None
+
+
+def _clean_details(value: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """Technical details: a few named values, small enough to be what people type by hand."""
+    if value is None:
+        return None
+    if len(value) > 80:
+        raise ValueError("At most 80 details")
+    cleaned: dict[str, Any] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or not key.strip() or len(key) > 80:
+            raise ValueError("A detail name must be 1 to 80 characters")
+        if item is not None and not isinstance(item, (str, int, float, bool)):
+            raise ValueError("A detail must be text, a number, true or false")
+        if isinstance(item, str) and len(item) > 500:
+            raise ValueError("A detail must be at most 500 characters")
+        cleaned[key.strip()] = item
+    return cleaned
 
 
 class AssetCreate(BaseModel):
@@ -94,6 +115,16 @@ class AssetUpdate(BaseModel):
     group_id: Optional[uuid.UUID] = None
     ticker: Optional[str] = None
     ticker_exchange: Optional[str] = None
+    address: Optional[str] = Field(default=None, max_length=500)
+    latitude: Optional[Decimal] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[Decimal] = Field(default=None, ge=-180, le=180)
+    details: Optional[dict[str, DetailValue]] = None
+    notes: Optional[str] = Field(default=None, max_length=5000)
+
+    @field_validator("details")
+    @classmethod
+    def check_details(cls, value: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        return _clean_details(value)
 
 
 class AssetRead(BaseModel):
@@ -143,8 +174,44 @@ class AssetRead(BaseModel):
     total_invested: Optional[float] = None
     realized_gain: Optional[float] = None
     transaction_count: int = 0
+    address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    details: Optional[dict[str, Any]] = None
+    notes: Optional[str] = None
+    cover_photo_id: Optional[uuid.UUID] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AssetPhotoRead(BaseModel):
+    id: uuid.UUID
+    asset_id: uuid.UUID
+    filename: str
+    content_type: str
+    size: int
+    caption: Optional[str] = None
+    position: int
+    is_cover: bool = False
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AssetPhotoUpdate(BaseModel):
+    caption: Optional[str] = Field(default=None, max_length=300)
+    is_cover: Optional[bool] = None
+    position: Optional[int] = Field(default=None, ge=0)
+
+
+class GeocodeRequest(BaseModel):
+    query: str = Field(min_length=3, max_length=300)
+
+
+class GeocodeResult(BaseModel):
+    display_name: str
+    latitude: float
+    longitude: float
 
 
 class AssetTransactionCreate(BaseModel):

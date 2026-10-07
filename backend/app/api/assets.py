@@ -2,6 +2,7 @@ import json
 import logging
 import uuid
 from decimal import Decimal
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
@@ -25,6 +26,10 @@ from app.schemas.asset_import import (
     AssetImportResult,
 )
 from app.schemas.asset import (
+    AssetPhotoRead,
+    AssetPhotoUpdate,
+    GeocodeRequest,
+    GeocodeResult,
     AssetBuyCreate,
     AssetCreate,
     AssetRead,
@@ -37,7 +42,7 @@ from app.schemas.asset import (
     MarketSymbolMatch,
     MarketSymbolQuote,
 )
-from app.services import asset_import_service, asset_service, asset_transaction_service
+from app.services import asset_import_service, asset_photo_service, asset_service, asset_transaction_service, geocode_service
 from app.services.fx_rate_service import convert
 
 logger = logging.getLogger(__name__)
@@ -393,6 +398,87 @@ async def delete_asset_transaction(
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
     return asset
+
+
+@router.post("/geocode", response_model=list[GeocodeResult])
+async def geocode_address(
+    data: GeocodeRequest,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+):
+    """Find coordinates for an address (sent to the configured geocoder)."""
+    try:
+        return await geocode_service.search(data.query)
+    except geocode_service.GeocoderUnavailable as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+
+
+@router.get("/{asset_id}/photos", response_model=list[AssetPhotoRead])
+async def list_asset_photos(
+    asset_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        return await asset_photo_service.list_photos(session, asset_id, ctx.workspace.id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.post("/{asset_id}/photos", response_model=AssetPhotoRead, status_code=status.HTTP_201_CREATED)
+async def upload_asset_photo(
+    asset_id: uuid.UUID,
+    file: UploadFile = File(...),
+    caption: Optional[str] = Form(None),
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    data = await file.read()
+    try:
+        return await asset_photo_service.upload_photo(
+            session, ctx.workspace.id, ctx.user_id, asset_id, file.filename or "photo", file.content_type or "", data, caption
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/photos/{photo_id}/file")
+async def download_asset_photo(
+    photo_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        photo, data = await asset_photo_service.read_photo(session, photo_id, ctx.workspace.id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return Response(content=data, media_type=photo.content_type, headers={"Cache-Control": "private, max-age=3600"})
+
+
+@router.patch("/photos/{photo_id}", response_model=AssetPhotoRead)
+async def update_asset_photo(
+    photo_id: uuid.UUID,
+    data: AssetPhotoUpdate,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        return await asset_photo_service.update_photo(session, photo_id, ctx.workspace.id, data.model_dump(exclude_unset=True))
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.delete("/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_asset_photo(
+    photo_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        await asset_photo_service.delete_photo(session, photo_id, ctx.workspace.id)
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 @router.get("/{asset_id}", response_model=AssetRead)

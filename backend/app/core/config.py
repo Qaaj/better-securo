@@ -81,6 +81,8 @@ class Settings(BaseSettings):
     storage_provider: str = "local"  # "local" or "s3"
     storage_local_path: str = "./data/attachments"
     storage_max_file_size_mb: int = 10
+    # Address lookup for the asset map (OpenStreetMap Nominatim). Empty switches it off.
+    geocoder_url: str = "https://nominatim.openstreetmap.org/search"
     storage_allowed_extensions: str = "jpg,jpeg,png,webp,gif,heic,pdf"
     storage_max_attachments_per_transaction: int = 10
     # An invoice gathers more paper than a transaction does: the bill, the

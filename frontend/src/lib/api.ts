@@ -45,7 +45,9 @@ import type {
   InvoiceSummary,
   RecurringTransaction,
   RecurringSuggestion,
+  AssetPhoto,
   Discovery,
+  GeocodeResult,
   RecurringHistory,
   CategorizerSettings,
   MonthlyReview,
@@ -1230,6 +1232,36 @@ export const dashboard = {
 }
 
 // Assets
+export const assetPhotos = {
+  list: async (assetId: string): Promise<AssetPhoto[]> => {
+    const { data } = await api.get(`/assets/${assetId}/photos`)
+    return data
+  },
+  upload: async (assetId: string, file: File, caption?: string): Promise<AssetPhoto> => {
+    const form = new FormData()
+    form.append('file', file)
+    if (caption) form.append('caption', caption)
+    const { data } = await api.post(`/assets/${assetId}/photos`, form)
+    return data
+  },
+  update: async (photoId: string, body: { caption?: string | null; is_cover?: boolean; position?: number }): Promise<AssetPhoto> => {
+    const { data } = await api.patch(`/assets/photos/${photoId}`, body)
+    return data
+  },
+  remove: async (photoId: string): Promise<void> => {
+    await api.delete(`/assets/photos/${photoId}`)
+  },
+  /** The photo as a blob, since the image needs the sign-in the page request carries. */
+  blob: async (photoId: string): Promise<Blob> => {
+    const { data } = await api.get(`/assets/photos/${photoId}/file`, { responseType: 'blob' })
+    return data
+  },
+  geocode: async (query: string): Promise<GeocodeResult[]> => {
+    const { data } = await api.post('/assets/geocode', { query })
+    return data
+  },
+}
+
 export const assets = {
   list: async (includeArchived = false): Promise<Asset[]> => {
     const { data } = await api.get('/assets', { params: { include_archived: includeArchived } })

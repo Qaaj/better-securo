@@ -837,6 +837,31 @@ export interface Asset {
   total_invested: number | null
   realized_gain: number | null
   transaction_count: number
+  // The asset page: where it is, what it is like, and the photo to lead with.
+  address: string | null
+  latitude: number | null
+  longitude: number | null
+  details: Record<string, string | number | boolean | null> | null
+  notes: string | null
+  cover_photo_id: string | null
+}
+
+export interface AssetPhoto {
+  id: string
+  asset_id: string
+  filename: string
+  content_type: string
+  size: number
+  caption: string | null
+  position: number
+  is_cover: boolean
+  created_at: string
+}
+
+export interface GeocodeResult {
+  display_name: string
+  latitude: number
+  longitude: number
 }
 
 /** One order read from a broker CSV, before it reaches a holding. */
