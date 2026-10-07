@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Optional
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, text
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -105,6 +105,15 @@ class Asset(Base):
     # assets when a logo provider is configured. Null means "no logo, use
     # the type icon". Frontend swaps to the type icon on <img> load error.
     logo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # What the asset page shows: where it is, what it is like, and a photo to lead with.
+    address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=9, scale=6), nullable=True)
+    longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=9, scale=6), nullable=True)
+    # Technical details by name (floor area, build year, a VIN ...); the frontend owns the field names.
+    details: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    cover_photo_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     values: Mapped[list["AssetValue"]] = relationship(back_populates="asset", cascade="all, delete-orphan")
     transactions: Mapped[list["AssetTransaction"]] = relationship(

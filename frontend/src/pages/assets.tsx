@@ -41,6 +41,7 @@ import {
   PieChart,
   AlertTriangle,
   Upload,
+  Image as ImageIcon,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -51,7 +52,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/page-header'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
@@ -776,6 +777,15 @@ export default function AssetsPage() {
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="font-semibold text-foreground truncate">{asset.ticker && !asset.ticker.startsWith('TD:') ? asset.ticker : asset.name}</span>
+                <Link
+                  to={`/assets/${asset.id}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="shrink-0 text-muted-foreground hover:text-primary"
+                  aria-label={t('assets.page.open', { name: asset.name })}
+                  title={t('assets.page.open', { name: asset.name })}
+                >
+                  <ImageIcon size={13} />
+                </Link>
                 {needsBuys && (
                   <Badge
                     variant="outline"

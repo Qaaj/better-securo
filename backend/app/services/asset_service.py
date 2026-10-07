@@ -179,6 +179,12 @@ def _asset_to_read(
         total_invested=total_invested,
         realized_gain=float(asset.realized_gain) if asset.realized_gain is not None else None,
         transaction_count=transaction_count,
+        address=asset.address,
+        latitude=float(asset.latitude) if asset.latitude is not None else None,
+        longitude=float(asset.longitude) if asset.longitude is not None else None,
+        details=asset.details,
+        notes=asset.notes,
+        cover_photo_id=asset.cover_photo_id,
     )
 
 

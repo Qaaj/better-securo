@@ -99,6 +99,15 @@ It uses the same rules as the dashboard for what counts as income and spending, 
 
 An asset can carry a **yield** (a percentage of its value a year: savings, bonds, dividend stocks), a **fixed amount** per month, quarter, half-year or year (a rental), and a **planned yearly sale** percentage. These feed the Retirement tab; they are modelled and never create transactions. Every asset works the same whether or not it is in a group.
 
+### Asset pages
+
+Each asset has its own page (the picture icon beside its name on the Assets page):
+
+- **Photos:** a lead picture and thumbnails with a viewer, captions, a choice of lead photo and drag-and-drop upload. Photos are shrunk in the browser before upload and kept in the attachment storage.
+- **Map:** an address you type is found on an OpenStreetMap map and the place is saved with the asset. Finding it sends the typed address to OpenStreetMap's search, and the map loads tiles from OpenStreetMap while it is shown. Point `GEOCODER_URL` at your own Nominatim, or set it empty to turn the lookup off; coordinates can also be typed by hand.
+- **Technical details:** fields by type (a building: floor area, plot, rooms, build year, energy label, heating, cadastral reference; a car or a boat: make, model, year, registration, identification number, engine hours, length and so on; valuables; investments), plus your own named fields.
+- **At a glance and notes:** what it is worth, what it cost, gain or loss, growth, modelled income and any planned sale, and free notes.
+
 ### Retirement
 
 The **Retirement** tab sits under Analysis.
