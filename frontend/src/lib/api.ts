@@ -45,7 +45,10 @@ import type {
   InvoiceSummary,
   RecurringTransaction,
   RecurringSuggestion,
+  AssetContract,
+  AssetDocument,
   AssetPhoto,
+  DocumentKind,
   Discovery,
   GeocodeResult,
   RecurringHistory,
@@ -1259,6 +1262,72 @@ export const assetPhotos = {
   geocode: async (query: string): Promise<GeocodeResult[]> => {
     const { data } = await api.post('/assets/geocode', { query })
     return data
+  },
+}
+
+export type ContractInput = Partial<
+  Pick<AssetContract, 'kind' | 'provider' | 'contract_number' | 'customer_number' | 'meter_number' | 'start_date' | 'end_date' | 'notice_days' | 'recurring_id' | 'notes'>
+>
+
+export const assetContracts = {
+  list: async (assetId: string): Promise<AssetContract[]> => {
+    const { data } = await api.get(`/assets/${assetId}/contracts`)
+    return data
+  },
+  create: async (assetId: string, body: ContractInput): Promise<AssetContract> => {
+    const { data } = await api.post(`/assets/${assetId}/contracts`, body)
+    return data
+  },
+  update: async (id: string, body: ContractInput): Promise<AssetContract> => {
+    const { data } = await api.patch(`/assets/contracts/${id}`, body)
+    return data
+  },
+  remove: async (id: string): Promise<void> => {
+    await api.delete(`/assets/contracts/${id}`)
+  },
+}
+
+export const assetDocuments = {
+  list: async (assetId: string): Promise<AssetDocument[]> => {
+    const { data } = await api.get(`/assets/${assetId}/documents`)
+    return data
+  },
+  upload: async (
+    assetId: string,
+    file: File,
+    meta: { kind: DocumentKind; title?: string; contract_id?: string | null; document_date?: string | null; expires_on?: string | null },
+  ): Promise<AssetDocument> => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('kind', meta.kind)
+    if (meta.title) form.append('title', meta.title)
+    if (meta.contract_id) form.append('contract_id', meta.contract_id)
+    if (meta.document_date) form.append('document_date', meta.document_date)
+    if (meta.expires_on) form.append('expires_on', meta.expires_on)
+    const { data } = await api.post(`/assets/${assetId}/documents`, form)
+    return data
+  },
+  update: async (
+    id: string,
+    body: { kind?: DocumentKind; title?: string; contract_id?: string | null; document_date?: string | null; expires_on?: string | null },
+  ): Promise<AssetDocument> => {
+    const { data } = await api.patch(`/assets/documents/${id}`, body)
+    return data
+  },
+  remove: async (id: string): Promise<void> => {
+    await api.delete(`/assets/documents/${id}`)
+  },
+  /** Save a document to disk: it is fetched with the sign-in and handed to the browser as a download. */
+  download: async (doc: AssetDocument): Promise<void> => {
+    const { data } = await api.get(`/assets/documents/${doc.id}/file`, { responseType: 'blob' })
+    const url = URL.createObjectURL(data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = doc.filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   },
 }
 
