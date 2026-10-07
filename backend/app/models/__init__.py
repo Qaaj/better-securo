@@ -9,6 +9,7 @@ from app.models.account import Account
 from app.models.transaction import Transaction
 from app.models.rule import Rule
 from app.models.categorization import CategorizationJob, CategorizationSuggestion
+from app.models.asset_contract import AssetContract, AssetDocument
 from app.models.asset_photo import AssetPhoto
 from app.models.recurring_dismissal import RecurringDismissal
 from app.models.retirement_state import RetirementState
@@ -49,6 +50,8 @@ from app.core import workspace_autostamp  # noqa: F401, E402
 __all__ = [
     "CategorizationJob",
     "CategorizationSuggestion",
+    "AssetContract",
+    "AssetDocument",
     "AssetPhoto",
     "RecurringDismissal",
     "RetirementState",

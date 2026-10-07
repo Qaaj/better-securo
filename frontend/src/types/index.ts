@@ -846,6 +846,51 @@ export interface Asset {
   cover_photo_id: string | null
 }
 
+export type ContractKind = 'energy' | 'gas' | 'water' | 'internet' | 'insurance' | 'tax' | 'condo' | 'mortgage' | 'maintenance' | 'other'
+export type DocumentKind = 'contract' | 'insurance' | 'deed' | 'energy_certificate' | 'invoice' | 'manual' | 'survey' | 'other'
+
+export interface AssetContract {
+  id: string
+  asset_id: string
+  kind: ContractKind
+  provider: string
+  contract_number: string | null
+  customer_number: string | null
+  meter_number: string | null
+  start_date: string | null
+  end_date: string | null
+  notice_days: number | null
+  recurring_id: string | null
+  notes: string | null
+  created_at: string
+  recurring: {
+    id: string
+    description: string
+    amount: number | string
+    currency: string
+    frequency: string
+    is_active: boolean
+    amount_primary: number | null
+  } | null
+  document_count: number
+  days_left: number | null
+  notice_by: string | null
+}
+
+export interface AssetDocument {
+  id: string
+  asset_id: string
+  contract_id: string | null
+  kind: DocumentKind
+  title: string
+  filename: string
+  content_type: string
+  size: number
+  document_date: string | null
+  expires_on: string | null
+  created_at: string
+}
+
 export interface AssetPhoto {
   id: string
   asset_id: string

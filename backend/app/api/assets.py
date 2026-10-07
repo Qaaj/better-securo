@@ -2,6 +2,7 @@ import json
 import logging
 import uuid
 from decimal import Decimal
+from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
@@ -25,6 +26,14 @@ from app.schemas.asset_import import (
     AssetImportRequest,
     AssetImportResult,
 )
+from app.schemas.asset_contract import (
+    ContractCreate,
+    ContractRead,
+    ContractUpdate,
+    DocumentKind,
+    DocumentRead,
+    DocumentUpdate,
+)
 from app.schemas.asset import (
     AssetPhotoRead,
     AssetPhotoUpdate,
@@ -42,7 +51,7 @@ from app.schemas.asset import (
     MarketSymbolMatch,
     MarketSymbolQuote,
 )
-from app.services import asset_import_service, asset_photo_service, asset_service, asset_transaction_service, geocode_service
+from app.services import asset_contract_service, asset_import_service, asset_photo_service, asset_service, asset_transaction_service, geocode_service
 from app.services.fx_rate_service import convert
 
 logger = logging.getLogger(__name__)
@@ -479,6 +488,148 @@ async def delete_asset_photo(
         await asset_photo_service.delete_photo(session, photo_id, ctx.workspace.id)
     except LookupError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+def _not_found(e: LookupError) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+def _bad_request(e: ValueError) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/{asset_id}/contracts", response_model=list[ContractRead])
+async def list_asset_contracts(
+    asset_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        return await asset_contract_service.list_contracts(session, asset_id, ctx.workspace.id)
+    except LookupError as e:
+        raise _not_found(e)
+
+
+@router.post("/{asset_id}/contracts", response_model=ContractRead, status_code=status.HTTP_201_CREATED)
+async def create_asset_contract(
+    asset_id: uuid.UUID,
+    data: ContractCreate,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        return await asset_contract_service.create_contract(session, asset_id, ctx.workspace.id, data.model_dump())
+    except LookupError as e:
+        raise _not_found(e)
+    except ValueError as e:
+        raise _bad_request(e)
+
+
+@router.patch("/contracts/{contract_id}", response_model=ContractRead)
+async def update_asset_contract(
+    contract_id: uuid.UUID,
+    data: ContractUpdate,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        return await asset_contract_service.update_contract(session, contract_id, ctx.workspace.id, data.model_dump(exclude_unset=True))
+    except LookupError as e:
+        raise _not_found(e)
+    except ValueError as e:
+        raise _bad_request(e)
+
+
+@router.delete("/contracts/{contract_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_asset_contract(
+    contract_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        await asset_contract_service.delete_contract(session, contract_id, ctx.workspace.id)
+    except LookupError as e:
+        raise _not_found(e)
+
+
+@router.get("/{asset_id}/documents", response_model=list[DocumentRead])
+async def list_asset_documents(
+    asset_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        return await asset_contract_service.list_documents(session, asset_id, ctx.workspace.id)
+    except LookupError as e:
+        raise _not_found(e)
+
+
+@router.post("/{asset_id}/documents", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
+async def upload_asset_document(
+    asset_id: uuid.UUID,
+    file: UploadFile = File(...),
+    kind: DocumentKind = Form("other"),
+    title: Optional[str] = Form(None),
+    contract_id: Optional[uuid.UUID] = Form(None),
+    document_date: Optional[date] = Form(None),
+    expires_on: Optional[date] = Form(None),
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    data = await file.read()
+    try:
+        return await asset_contract_service.upload_document(
+            session, ctx.workspace.id, ctx.user_id, asset_id, file.filename or "document", file.content_type or "application/octet-stream", data,
+            kind=kind, title=title, contract_id=contract_id, document_date=document_date, expires_on=expires_on,
+        )
+    except LookupError as e:
+        raise _not_found(e)
+    except ValueError as e:
+        raise _bad_request(e)
+
+
+@router.get("/documents/{document_id}/file")
+async def download_asset_document(
+    document_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        document, data = await asset_contract_service.read_document(session, document_id, ctx.workspace.id)
+    except LookupError as e:
+        raise _not_found(e)
+    return Response(
+        content=data,
+        media_type=document.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{document.filename}"', "Cache-Control": "private, max-age=3600"},
+    )
+
+
+@router.patch("/documents/{document_id}", response_model=DocumentRead)
+async def update_asset_document(
+    document_id: uuid.UUID,
+    data: DocumentUpdate,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        return await asset_contract_service.update_document(session, document_id, ctx.workspace.id, data.model_dump(exclude_unset=True))
+    except LookupError as e:
+        raise _not_found(e)
+    except ValueError as e:
+        raise _bad_request(e)
+
+
+@router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_asset_document(
+    document_id: uuid.UUID,
+    ctx: WorkspaceContext = Depends(current_writable_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        await asset_contract_service.delete_document(session, document_id, ctx.workspace.id)
+    except LookupError as e:
+        raise _not_found(e)
 
 
 @router.get("/{asset_id}", response_model=AssetRead)

@@ -14,6 +14,9 @@ import { PageHeader } from '@/components/page-header'
 import { AssetPhotos } from '@/components/asset-photos'
 import { AssetLocation } from '@/components/asset-location'
 import { AssetDetailsCard } from '@/components/asset-details-card'
+import { AssetContracts } from '@/components/asset-contracts'
+import { AssetDocuments } from '@/components/asset-documents'
+import { useAuth } from '@/contexts/auth-context'
 import { Button } from '@/components/ui/button'
 import type { Asset } from '@/types'
 
@@ -45,6 +48,8 @@ export default function AssetDetailPage() {
 
 function AssetPage({ asset, canWrite }: { asset: Asset; canWrite: boolean }) {
   const { t } = useTranslation()
+  const { user } = useAuth()
+  const currency = user?.preferences?.currency_display ?? 'USD'
   return (
     <div>
       <Link to="/assets" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-2">
@@ -60,11 +65,13 @@ function AssetPage({ asset, canWrite }: { asset: Asset; canWrite: boolean }) {
             <Card title={t('assets.page.location')}>
               <AssetLocation key={`${asset.address}|${asset.latitude}|${asset.longitude}`} asset={asset} canWrite={canWrite} />
             </Card>
-            <AssetNotes key={asset.notes ?? ''} asset={asset} canWrite={canWrite} />
+            <AssetContracts assetId={asset.id} canWrite={canWrite} currency={currency} />
+            <AssetDocuments assetId={asset.id} canWrite={canWrite} />
           </div>
           <div className="lg:col-span-2 space-y-4">
             <AssetFacts asset={asset} />
             <AssetDetailsCard key={JSON.stringify(asset.details ?? {})} asset={asset} canWrite={canWrite} />
+            <AssetNotes key={asset.notes ?? ''} asset={asset} canWrite={canWrite} />
           </div>
         </div>
       </div>
