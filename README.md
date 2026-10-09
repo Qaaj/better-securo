@@ -145,6 +145,18 @@ The **Retirement** tab sits under Analysis.
 
 Plans, ticks and simulator settings are saved with your workspace on the server (the browser keeps a working copy), so they follow you to any browser or address. Saved plans that only exist in a browser are added when you open the page. The projection is a planning aid, not a forecast: no loan amortisation.
 
+### Demo account
+
+To show the app to other people without showing real data, build a demo account full of invented data (a household in a made-up town, with its transactions, recurring items, properties, contracts, documents, retirement plan and saved scenarios):
+
+```bash
+docker compose -p securo-dev exec backend python scripts/seed_demo.py            # create it
+docker compose -p securo-dev exec backend python scripts/seed_demo.py --reset    # rebuild it
+docker compose -p securo-dev exec backend python scripts/seed_demo.py --remove   # delete it
+```
+
+Sign in with the email and password defined at the top of [`backend/scripts/seed_demo.py`](backend/scripts/seed_demo.py). The demo lives in its own workspace of its own user, so it never mixes with your own accounts, and the script only ever touches that user's workspace. It has about 18 months of transactions (some deliberately uncategorized, a duplicate charge and an unusual payment for the Monthly review to find), recurring items (two left unlinked so *Search for matches* has something to propose, and two repeating charges with no item for *Search for new recurring*), a family home with photos, a map, technical details, contracts and documents, a rental flat, a campervan and a portfolio, and a retirement plan with three saved scenarios. Pictures and PDFs are drawn by the script. Change the password if the demo is ever reachable from the internet.
+
 ### Finding recurring charges
 
 Two buttons on the Recurring page search the transactions that no recurring item is linked to yet:
