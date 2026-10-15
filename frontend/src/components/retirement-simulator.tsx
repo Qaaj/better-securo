@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Area, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { buildProjectionInputs, read, write, DEFAULT_PLAN, PLAN_KEY, SIM_KEY } from '@/lib/retirement-plan'
+import { buildProjectionInputs, read, write, DEFAULT_PLAN, PLAN_KEY, SIM_KEY, SIM_RESULT_KEY } from '@/lib/retirement-plan'
 import {
   DEFAULT_SIM,
   RISK_CLASSES,
@@ -89,7 +89,19 @@ export function RetirementSimulator({
   const bufferCells = buffered && buffered.input === input && buffered.params === params && buffered.types === types ? buffered.cells : null
 
   useEffect(() => {
-    const timer = setTimeout(() => setResult(simulate(input, params, types)), 200)
+    const timer = setTimeout(() => {
+      const next = simulate(input, params, types)
+      setResult(next)
+      write(SIM_RESULT_KEY, {
+        computedAt: new Date().toISOString(),
+        futures: next.runs,
+        chanceTheMoneyLasts: Number(next.successRate.toFixed(3)),
+        typicalAssetsLeftAtEndTodaysMoney: Math.round(next.real.medianEnd),
+        badLuckAssetsLeftAtEndTodaysMoney: Math.round(next.real.worstCaseEnd),
+        medianRunOutYearIfItRunsOut: next.medianRunOutYear === null ? null : new Date().getFullYear() + next.medianRunOutYear,
+        settings: { crashChancePercent: params.crashChancePercent, crashDepthPercent: [params.crashMinPercent, params.crashMaxPercent], growthRatesIncludeCrashes: params.rateIncludesCrashes },
+      })
+    }, 200)
     return () => clearTimeout(timer)
   }, [input, params, types])
 

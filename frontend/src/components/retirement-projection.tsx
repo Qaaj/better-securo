@@ -1,5 +1,5 @@
 import { newId } from '@/lib/id'
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Download, Plus, Save, Trash2 } from 'lucide-react'
@@ -14,6 +14,7 @@ import {
   PLAN_KEY,
   SCENARIOS_KEY,
   SIM_KEY,
+  SUMMARY_KEY,
   buildProjectionInputs,
   read,
   write,
@@ -88,6 +89,26 @@ export function RetirementProjection({
 
   const thisYear = new Date().getFullYear()
   const horizon = plan.assumptions.horizonYears
+  // Keep the latest figures with the plan, so they can be read without opening this page.
+  const lastSummary = useRef('')
+  useEffect(() => {
+    const figures = {
+      currency,
+      horizonYears: horizon,
+      runwayYears: scenario.runwayYears,
+      runwayYearsWithoutWhatIfs: baseline.runwayYears,
+      assetsYouSellFromNow: Math.round(scenario.drawableNow),
+      netWorthNow: Math.round(scenario.netWorthNow),
+      assetsLeftAtHorizon: Math.round(scenario.rows[horizon - 1]?.drawable ?? 0),
+      netWorthAtHorizon: Math.round(scenario.rows[horizon - 1]?.netWorth ?? 0),
+      assetsLeftAtDrawdownEnd: scenario.leftAtEnd === null ? null : Math.round(scenario.leftAtEnd),
+      totalTax: Math.round(scenario.totalTax),
+    }
+    const serialised = JSON.stringify(figures)
+    if (serialised === lastSummary.current) return
+    lastSummary.current = serialised
+    write(SUMMARY_KEY, { ...figures, computedAt: new Date().toISOString() })
+  }, [scenario, baseline, currency, horizon])
   const living: Living = plan.living ?? { monthly: 0, inflates: true }
   // What the same plan gives with living and travel a bit lower or higher.
   const livingSteps = useMemo(

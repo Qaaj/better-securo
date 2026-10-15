@@ -145,6 +145,15 @@ The **Retirement** tab sits under Analysis.
 
 Plans, ticks and simulator settings are saved with your workspace on the server (the browser keeps a working copy), so they follow you to any browser or address. Saved plans that only exist in a browser are added when you open the page. The projection is a planning aid, not a forecast: no loan amortisation.
 
+### MCP tools for this fork's features
+
+Upstream's built-in MCP server (`agents` profile, `AGENTS_ENABLED=true`, a token from *External MCP access*) gains tools for what this fork adds:
+
+- **Read:** `get_monthly_review`, `get_asset` (value, address, technical details, notes, contracts with status and linked cost, documents, running costs), `list_contracts` (across assets; `needs_attention` for ended, notice-due and ending-soon contracts), `find_recurring_matches` (likely transactions for each recurring item, and repeating charges that fit none), `get_recurring_history`, `get_retirement_plan` (the saved plan and scenarios, plus the latest figures the Retirement page stored: runway, tax paid, assets left, and the stress test's chance the money lasts) and `get_categorization_status`.
+- **Propose:** `propose_link_recurring_match`, `propose_create_recurring_from_series`, `propose_dismiss_recurring_suggestion`, `propose_create_asset_contract` and `propose_update_asset_details`. Like upstream's propose tools they only preview, and an external client repeats the call with `apply=true` after you confirm.
+
+The retirement projection and stress test run in the browser, so the retirement figures are as fresh as the last time the page was open.
+
 ### Demo account
 
 To show the app to other people without showing real data, build a demo account full of invented data (a household in a made-up town, with its transactions, recurring items, properties, contracts, documents, retirement plan and saved scenarios):
