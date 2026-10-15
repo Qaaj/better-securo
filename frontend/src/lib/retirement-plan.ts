@@ -63,6 +63,9 @@ export const DEFAULT_PLAN: Plan = {
 }
 export const PLAN_KEY = 'retirement:plan'
 export const SIM_KEY = 'retirement:simulation'
+/** The latest figures, kept with the plan so other tools (the MCP server) can read them without the browser. */
+export const SUMMARY_KEY = 'retirement:summary'
+export const SIM_RESULT_KEY = 'retirement:simulation-result'
 export { SCENARIOS_KEY }
 
 export function read<T>(key: string, fallback: T): T {

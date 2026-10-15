@@ -180,3 +180,12 @@ it('has a living and travel figure whose change shows up in the runway steps', a
   expect(screen.getByText('−20%')).toBeInTheDocument()
   expect(JSON.parse(window.localStorage.getItem('retirement:plan') ?? '{}').living).toEqual({ monthly: 2000, inflates: true })
 })
+
+it('keeps its latest figures with the plan so they can be read without the page', async () => {
+  renderWithProviders(<RetirementProjection {...props} />)
+  await screen.findByText('Runway')
+  const stored = JSON.parse(window.localStorage.getItem('retirement:summary') ?? 'null')
+  expect(stored).toMatchObject({ currency: 'EUR', horizonYears: 30, totalTax: 0 })
+  expect(stored.assetsYouSellFromNow).toBe(150_000)
+  expect(typeof stored.computedAt).toBe('string')
+})

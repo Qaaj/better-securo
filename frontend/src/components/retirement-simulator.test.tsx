@@ -33,3 +33,13 @@ it('switches the fan chart to a table with a row per year', async () => {
   // Horizon is 10 years in this plan.
   await waitFor(() => expect(screen.getAllByRole('row').length).toBeGreaterThanOrEqual(11))
 }, 30000)
+
+
+it('stores the latest stress-test figures with the plan', async () => {
+  renderWithProviders(<RetirementSimulator items={[]} assets={[asset]} excluded={new Set()} currency="EUR" locale="en-US" />)
+  await waitFor(() => expect(window.localStorage.getItem('retirement:simulation-result')).not.toBeNull(), { timeout: 5000 })
+  const stored = JSON.parse(window.localStorage.getItem('retirement:simulation-result') ?? '{}')
+  expect(stored.chanceTheMoneyLasts).toBe(1)
+  expect(stored.futures).toBeGreaterThan(0)
+  expect(stored.settings.crashChancePercent).toBeGreaterThanOrEqual(0)
+}, 30000)
