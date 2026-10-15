@@ -6,9 +6,9 @@
  * server's copy down.
  */
 import { retirementState } from '@/lib/api'
+import { SCENARIOS_KEY } from '@/lib/retirement-model'
 
 export const PREFIX = 'retirement:'
-export const SCENARIOS_KEY = 'retirement:scenarios'
 const DEBOUNCE_MS = 800
 
 type Store = Record<string, unknown>

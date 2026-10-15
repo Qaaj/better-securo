@@ -14,4 +14,5 @@ from mcp_server.tools import (  # noqa: F401
     lifecycle,
     rules,
     fork,
+    retirement,
 )
