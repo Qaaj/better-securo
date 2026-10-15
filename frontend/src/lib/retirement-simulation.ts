@@ -323,6 +323,16 @@ export const SWEEP_RUNS = 300
 export const SWEEP_SPEND = [0.8, 0.9, 1, 1.1, 1.25, 1.5]
 export const SWEEP_CRASH = [0, 5, 10, 15, 25]
 
+function sweepCell(input: ProjectionInput, params: SimParams, types: Record<string, string>, runs: number, spend: number, crash: number): SweepCell {
+  const result = simulate(scaleSpending(input, spend), { ...params, runs, crashChancePercent: crash }, types)
+  return { spend, crash, successRate: result.successRate }
+}
+
+/** The same grid, all at once; for callers that have no screen to keep responsive. */
+export function sweepSync(input: ProjectionInput, params: SimParams, types: Record<string, string>, runsPerCell: number): SweepCell[] {
+  return SWEEP_CRASH.flatMap((crash) => SWEEP_SPEND.map((spend) => sweepCell(input, params, types, runsPerCell, spend, crash)))
+}
+
 /** Success rate across a grid of spending levels and crash chances. Yields between rows so the page stays responsive. */
 export async function sweep(
   input: ProjectionInput,
@@ -335,8 +345,7 @@ export async function sweep(
   for (const crash of SWEEP_CRASH) {
     for (const spend of SWEEP_SPEND) {
       if (signal?.cancelled) return cells
-      const result = simulate(scaleSpending(input, spend), { ...params, runs: runsPerCell, crashChancePercent: crash }, types)
-      cells.push({ spend, crash, successRate: result.successRate })
+      cells.push(sweepCell(input, params, types, runsPerCell, spend, crash))
       await new Promise((resolve) => setTimeout(resolve, 0))
     }
   }
@@ -352,6 +361,17 @@ export interface BufferCell {
 
 export const BUFFER_YEARS = [0, 1, 2, 3, 5]
 
+function bufferCell(input: ProjectionInput, params: SimParams, types: Record<string, string>, runs: number, years: number): BufferCell {
+  const withBuffer = { ...input, assumptions: { ...input.assumptions, bufferYears: years } }
+  const result = simulate(withBuffer, { ...params, runs }, types)
+  return { years, successRate: result.successRate, medianEnd: result.real.medianEnd }
+}
+
+/** The same comparison, all at once. */
+export function bufferSweepSync(input: ProjectionInput, params: SimParams, types: Record<string, string>, runs: number): BufferCell[] {
+  return BUFFER_YEARS.map((years) => bufferCell(input, params, types, runs, years))
+}
+
 /** The same futures with different cash buffers, to see what holding cash is worth. */
 export async function bufferSweep(
   input: ProjectionInput,
@@ -363,9 +383,7 @@ export async function bufferSweep(
   const cells: BufferCell[] = []
   for (const years of BUFFER_YEARS) {
     if (signal?.cancelled) return cells
-    const withBuffer = { ...input, assumptions: { ...input.assumptions, bufferYears: years } }
-    const result = simulate(withBuffer, { ...params, runs }, types)
-    cells.push({ years, successRate: result.successRate, medianEnd: result.real.medianEnd })
+    cells.push(bufferCell(input, params, types, runs, years))
     await new Promise((resolve) => setTimeout(resolve, 0))
   }
   return cells
