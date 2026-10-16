@@ -18,6 +18,7 @@ export const MODULE_IDS = [
   'payees',
   'rules',
   'invoices',
+  'vlcvx',
 ] as const
 
 export type ModuleId = (typeof MODULE_IDS)[number]

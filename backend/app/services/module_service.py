@@ -57,6 +57,7 @@ class ModuleId(str, Enum):
     PAYEES = "payees"
     RULES = "rules"
     INVOICES = "invoices"
+    VLCVX = "vlcvx"
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,7 @@ CATALOG: Mapping[ModuleId, ModuleSpec] = {
         ModuleSpec(ModuleId.PAYEES, default_enabled=True),
         ModuleSpec(ModuleId.RULES, default_enabled=True),
         ModuleSpec(ModuleId.INVOICES, default_enabled=False),
+        ModuleSpec(ModuleId.VLCVX, default_enabled=True),
     )
 }
 

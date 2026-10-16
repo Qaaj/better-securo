@@ -10,6 +10,7 @@ from app.api.accounts import router as accounts_router
 from app.api.categories import router as categories_router
 from app.api.categorization import router as categorization_router
 from app.api.retirement_state import router as retirement_state_router
+from app.api.vlcvx import router as vlcvx_router
 from app.api.category_groups import router as category_groups_router
 from app.api.connections import router as connections_router
 from app.api.custom_auth import router as custom_auth_router
@@ -172,6 +173,7 @@ app.include_router(
 app.include_router(categories_router)
 app.include_router(categorization_router)
 app.include_router(retirement_state_router)
+app.include_router(vlcvx_router)
 app.include_router(category_groups_router)
 app.include_router(rules_router)
 app.include_router(reconciliation_router)

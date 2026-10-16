@@ -28,6 +28,7 @@ const CollectionsPage = lazy(() => import('@/pages/collections'))
 const RecurringPage = lazy(() => import('@/pages/recurring'))
 const AssetsPage = lazy(() => import('@/pages/assets'))
 const AssetDetailPage = lazy(() => import('@/pages/asset-detail'))
+const VlcvxPage = lazy(() => import('@/pages/vlcvx'))
 const ReportsPage = lazy(() => import('@/pages/reports'))
 const RetirementPage = lazy(() => import('@/pages/retirement'))
 const PayeesPage = lazy(() => import('@/pages/payees'))
@@ -104,6 +105,7 @@ function App() {
                   <Route path="/collections" element={<CollectionsPage />} />
                   <Route path="/recurring" element={<ModuleRoute module="recurring"><RecurringPage /></ModuleRoute>} />
                   <Route path="/assets" element={<ModuleRoute module="assets"><AssetsPage /></ModuleRoute>} />
+                  <Route path="/vlcvx" element={<ModuleRoute module="vlcvx"><VlcvxPage /></ModuleRoute>} />
                   <Route path="/assets/:id" element={<ModuleRoute module="assets"><AssetDetailPage /></ModuleRoute>} />
                   {/* Kept so links minted before the importers were merged keep working. */}
                   <Route path="/assets/import" element={<Navigate to="/import?tab=investments" replace />} />
