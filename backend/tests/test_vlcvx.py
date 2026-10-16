@@ -5,8 +5,20 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+import pytest_asyncio
+from sqlalchemy import delete
 
+from app.models.vlcvx import VlcvxProtocol, VlcvxRound, VlcvxSync
 from app.services import vlcvx_service as service
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def clean_vlcvx(session):
+    """These tables are shared by every workspace, so each test starts from empty ones."""
+    for model in (VlcvxRound, VlcvxProtocol, VlcvxSync):
+        await session.execute(delete(model))
+    await session.commit()
+    yield
 
 
 def epoch_ts(days_ago: int) -> int:

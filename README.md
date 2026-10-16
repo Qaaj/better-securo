@@ -163,9 +163,12 @@ The **vlCVX** tab (Analysis) covers the vote-locked CVX bribe market on Votium, 
 - **Payouts:** dollars per vlCVX in every round, the total bribes, what 1,000 vlCVX voting every round would have collected added up, and the votes in each round, over 13, 26 or 52 rounds or all of them.
 - **Rounds:** every round in a table (exportable as CSV), with a detail view of the pools bribed, the tokens paid and the votes.
 - **Bribes:** what the bribes were paid in, round by round, and the pools bribed most over all rounds.
-- **Simulator:** enter the vlCVX you hold (and a CVX price for the yield), pick the protocols and how many past rounds to draw from. It replays what holding would have paid over the last 4, 13, 26, 52 and all rounds, and projects the next 13 to 104 rounds by drawing past rounds at random: the middle outcome and the range holding eight in ten futures, per round, per year and in total. Rounds of the different protocols are lined up into two-week periods and added, since a holder who votes earns from each.
+- **Holdings:** the vlCVX you own is set at the top of the page (kept in the browser); it shows what you would have earned in the latest round and drives the simulator.
+- **Simulator:** uses that amount (and a CVX price you enter for the yield), pick the protocols and how many past rounds to draw from. It replays what holding would have paid over the last 4, 13, 26, 52 and all rounds, and projects the next 13 to 104 rounds by drawing past rounds at random: the middle outcome and the range holding eight in ten futures, per round, per year and in total. Rounds of the different protocols are lined up into two-week periods and added, since a holder who votes earns from each.
 
 Past payouts do not predict future ones and the simulator leaves out gas, the CVX price and the lock itself. The data source is set with `LLAMA_AIRFORCE_URL` (empty switches the tab's data off). Wallet-specific pages of the Llama Airforce site (Pirex, the Union, pounders) read the chain for an address and are not copied.
+
+**Standalone site.** The same tab can run on its own, without Securo: `backend/scripts/vlcvx_export.py` (standard library only) keeps the history in a SQLite file and writes it as static JSON (`python3 vlcvx_export.py --db vlcvx.sqlite --out site/data`), and `npm run build:vlcvx` in `frontend/` builds the page to `frontend/vlcvx-dist/` with the data read from those files. Run the exporter on a timer and serve the two together.
 
 ### Demo account
 

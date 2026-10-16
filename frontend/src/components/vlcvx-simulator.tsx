@@ -12,13 +12,12 @@ const tooltipStyle: React.CSSProperties = { background: 'var(--card)', border: '
 const axisTick = { fontSize: 10, fill: 'var(--muted-foreground)' }
 
 interface Settings {
-  amount: string
   price: string
   protocols: string[] | null
   lookback: number
   horizon: number
 }
-const DEFAULTS: Settings = { amount: '10000', price: '', protocols: null, lookback: 26, horizon: 52 }
+const DEFAULTS: Settings = { price: '', protocols: null, lookback: 26, horizon: 52 }
 
 function load(): Settings {
   try {
@@ -30,7 +29,7 @@ function load(): Settings {
 }
 
 /** What holding vlCVX would pay: replayed over past rounds, and projected by drawing from them at random. */
-export function VlcvxSimulator({ protocols, byProtocol }: { protocols: VlcvxProtocolSummary[]; byProtocol: Record<string, VlcvxRound[]> }) {
+export function VlcvxSimulator({ protocols, byProtocol, amount }: { protocols: VlcvxProtocolSummary[]; byProtocol: Record<string, VlcvxRound[]>; amount: number }) {
   const { t } = useTranslation()
   const [settings, setSettings] = useState<Settings>(load)
   useEffect(() => {
@@ -48,7 +47,6 @@ export function VlcvxSimulator({ protocols, byProtocol }: { protocols: VlcvxProt
     () => settings.protocols ?? available.filter((p) => p.protocol !== 'cvx-prisma').map((p) => p.protocol),
     [settings.protocols, available],
   )
-  const amount = Math.max(0, parseFloat(settings.amount) || 0)
   const price = parseFloat(settings.price) > 0 ? parseFloat(settings.price) : null
 
   const periods = useMemo(() => alignPeriods(byProtocol, included), [byProtocol, included])
@@ -62,10 +60,6 @@ export function VlcvxSimulator({ protocols, byProtocol }: { protocols: VlcvxProt
     <div className="space-y-4">
       <Panel title={t('vlcvx.simTitle')} hint={t('vlcvx.simHint')}>
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="vl-amount" className="text-xs">{t('vlcvx.simAmount')}</Label>
-            <Input id="vl-amount" type="number" min="0" step="any" className="h-8" value={settings.amount} onChange={(e) => set('amount', e.target.value)} />
-          </div>
           <div className="space-y-1.5">
             <Label htmlFor="vl-price" className="text-xs">{t('vlcvx.simPrice')}</Label>
             <Input id="vl-price" type="number" min="0" step="any" className="h-8" value={settings.price} placeholder={t('vlcvx.simPricePlaceholder')} onChange={(e) => set('price', e.target.value)} />
