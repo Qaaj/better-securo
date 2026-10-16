@@ -50,6 +50,11 @@ import type {
   AssetPhoto,
   DocumentKind,
   Discovery,
+  VlcvxBreakdown,
+  VlcvxRound,
+  VlcvxRoundDetail,
+  VlcvxSummary,
+  VlcvxSync,
   GeocodeResult,
   RecurringHistory,
   CategorizerSettings,
@@ -1328,6 +1333,29 @@ export const assetDocuments = {
     a.click()
     a.remove()
     URL.revokeObjectURL(url)
+  },
+}
+
+export const vlcvx = {
+  summary: async (): Promise<VlcvxSummary> => {
+    const { data } = await api.get('/vlcvx/summary')
+    return data
+  },
+  refresh: async (): Promise<VlcvxSync> => {
+    const { data } = await api.post('/vlcvx/refresh')
+    return data
+  },
+  rounds: async (protocol: string): Promise<VlcvxRound[]> => {
+    const { data } = await api.get(`/vlcvx/${protocol}/rounds`)
+    return data
+  },
+  round: async (protocol: string, round: number): Promise<VlcvxRoundDetail> => {
+    const { data } = await api.get(`/vlcvx/${protocol}/rounds/${round}`)
+    return data
+  },
+  breakdown: async (protocol: string): Promise<VlcvxBreakdown> => {
+    const { data } = await api.get(`/vlcvx/${protocol}/breakdown`)
+    return data
   },
 }
 

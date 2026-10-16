@@ -156,6 +156,17 @@ Upstream's built-in MCP server (`agents` profile, `AGENTS_ENABLED=true`, a token
 
 The retirement engine is TypeScript, bundled into `backend/app/engine/retirement_engine.js` and run with an embedded V8 (`mini-racer`), so the page and the MCP tools share one copy of the logic. After changing anything the engine imports (`frontend/src/lib/retirement*`), run `scripts/build-engine.sh` from the repo root with the dev stack up and commit the result; a frontend test fails when the bundle is stale and a backend test when the copy does not match.
 
+### vlCVX
+
+The **vlCVX** tab (Analysis) covers the vote-locked CVX bribe market on Votium, using [Llama Airforce](https://llama.airforce)'s public API as the source. A sync copies every round, current and historical, into this app's database (Curve gauges, f(x) Protocol and Prisma: the overview of each round and, for each, the pools bribed, what they were paid in and the votes they got), so the history is kept locally and only open rounds are fetched again. It refreshes every six hours, and **Refresh data** does it on demand.
+
+- **Payouts:** dollars per vlCVX in every round, the total bribes, what 1,000 vlCVX voting every round would have collected added up, and the votes in each round, over 13, 26 or 52 rounds or all of them.
+- **Rounds:** every round in a table (exportable as CSV), with a detail view of the pools bribed, the tokens paid and the votes.
+- **Bribes:** what the bribes were paid in, round by round, and the pools bribed most over all rounds.
+- **Simulator:** enter the vlCVX you hold (and a CVX price for the yield), pick the protocols and how many past rounds to draw from. It replays what holding would have paid over the last 4, 13, 26, 52 and all rounds, and projects the next 13 to 104 rounds by drawing past rounds at random: the middle outcome and the range holding eight in ten futures, per round, per year and in total. Rounds of the different protocols are lined up into two-week periods and added, since a holder who votes earns from each.
+
+Past payouts do not predict future ones and the simulator leaves out gas, the CVX price and the lock itself. The data source is set with `LLAMA_AIRFORCE_URL` (empty switches the tab's data off). Wallet-specific pages of the Llama Airforce site (Pirex, the Union, pounders) read the chain for an address and are not copied.
+
 ### Demo account
 
 To show the app to other people without showing real data, build a demo account full of invented data (a household in a made-up town, with its transactions, recurring items, properties, contracts, documents, retirement plan and saved scenarios):

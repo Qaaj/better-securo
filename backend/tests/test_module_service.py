@@ -32,6 +32,7 @@ PERSONAL_MODULES = [
     "retirement",
     "rules",
     "transactions",
+    "vlcvx",
 ]
 
 

@@ -10,6 +10,7 @@ from app.models.transaction import Transaction
 from app.models.rule import Rule
 from app.models.categorization import CategorizationJob, CategorizationSuggestion
 from app.models.asset_contract import AssetContract, AssetDocument
+from app.models.vlcvx import VlcvxProtocol, VlcvxRound, VlcvxSync
 from app.models.asset_photo import AssetPhoto
 from app.models.recurring_dismissal import RecurringDismissal
 from app.models.retirement_state import RetirementState
@@ -51,6 +52,9 @@ __all__ = [
     "CategorizationJob",
     "CategorizationSuggestion",
     "AssetContract",
+    "VlcvxProtocol",
+    "VlcvxRound",
+    "VlcvxSync",
     "AssetDocument",
     "AssetPhoto",
     "RecurringDismissal",

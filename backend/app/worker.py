@@ -19,6 +19,10 @@ celery_app.conf.update(
 )
 
 celery_app.conf.beat_schedule = {
+    "sync-vlcvx": {
+        "task": "app.tasks.vlcvx_tasks.sync_vlcvx",
+        "schedule": 6 * 60 * 60,  # a round lasts two weeks; every few hours keeps the open one fresh
+    },
     "sync-all-connections-hourly": {
         "task": "app.tasks.sync_tasks.sync_all_connections",
         "schedule": 60 * 60,  # every hour; task itself skips connections synced < 4h ago
@@ -69,6 +73,7 @@ celery_app.conf.include = [
     "app.tasks.asset_tasks",
     "app.tasks.fx_rate_tasks",
     "app.tasks.categorization_tasks",
+    "app.tasks.vlcvx_tasks",
     # Optional agents module — registering the import is harmless when
     # AGENTS_ENABLED=false (the task just won't be dispatched).
     "app.agents.tasks.ingest",

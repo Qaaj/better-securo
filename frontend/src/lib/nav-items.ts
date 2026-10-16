@@ -10,6 +10,7 @@ import {
   Tag,
   Upload,
   Users,
+  Vote,
 } from 'lucide-react'
 // Relative, not aliased: this file is pulled into the test project,
 // which compiles without the `@/*` path mapping (see tsconfig.node.json).
@@ -41,6 +42,7 @@ export const navItems: NavItem[] = [
   { type: 'link', key: 'reports', path: '/reports', icon: BarChart3, module: 'reports' },
   { type: 'link', key: 'assets', path: '/assets', icon: Landmark, module: 'assets' },
   { type: 'link', key: 'retirement', path: '/retirement', icon: PiggyBank, module: 'retirement' },
+  { type: 'link', key: 'vlcvx', path: '/vlcvx', icon: Vote, module: 'vlcvx' },
   { type: 'separator', labelKey: 'nav.groupSetup' },
   { type: 'link', key: 'recurring', path: '/recurring', icon: Repeat, module: 'recurring' },
   { type: 'link', key: 'categories', path: '/categories', icon: Tag, module: 'categories' },

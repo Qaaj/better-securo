@@ -24,6 +24,7 @@ describe('MODULE_IDS', () => {
         'retirement',
         'rules',
         'transactions',
+        'vlcvx',
       ].sort(),
     )
   })

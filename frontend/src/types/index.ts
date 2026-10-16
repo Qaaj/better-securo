@@ -1887,3 +1887,63 @@ export interface MonthlyReview {
   year: { month: string; income: number; expenses: number; saved: number }[]
   insights: ReviewInsight[]
 }
+
+export interface VlcvxProtocolSummary {
+  protocol: string
+  label: string
+  rounds: number
+  first_round: number | null
+  latest_round: number | null
+  latest_ends_at: string | null
+  latest_total_dollars: number | null
+  latest_dollar_per_vl: number | null
+  latest_votes: number | null
+  average_dollar_per_vl_12: number | null
+  best_dollar_per_vl: number | null
+  total_dollars_all_time: number | null
+  reward_per_dollar_bribe: number | null
+  synced_at: string | null
+}
+
+export interface VlcvxSync {
+  state: 'idle' | 'running' | 'failed'
+  started_at: string | null
+  finished_at: string | null
+  error: string | null
+  done: number
+  total: number
+}
+
+export interface VlcvxSummary {
+  enabled: boolean
+  source: string | null
+  has_data: boolean
+  protocols: VlcvxProtocolSummary[]
+  sync: VlcvxSync
+}
+
+export interface VlcvxRound {
+  round: number
+  ends_at: string | null
+  total_amount_dollars: number | null
+  dollar_per_vl: number | null
+  scores_total: number | null
+  proposal: string | null
+  vote_source: string | null
+  has_detail: boolean
+  bribe_count: number
+}
+
+export interface VlcvxRoundDetail extends VlcvxRound {
+  protocol: string
+  pools: { pool: string; dollars: number; tokens: string[]; votes: number | null }[]
+  tokens: { token: string; dollars: number; amount: number }[]
+  bribes: { pool: string; token: string; amount: number; amountDollars: number; gauge?: string }[]
+}
+
+export interface VlcvxBreakdown {
+  tokens: { token: string; total_dollars: number }[]
+  by_round: { round: number; ends_at: string | null; tokens: Record<string, number>; total_dollars: number }[]
+  top_pools: { pool: string; total_dollars: number; rounds: number; first_round: number; last_round: number; best_round_dollars: number }[]
+  rounds_with_detail: number
+}
