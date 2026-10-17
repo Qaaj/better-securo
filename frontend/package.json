@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "dev:docker": "node ../scripts/dev-frontend.mjs",
+    "build:vlcvx": "vite build -c vite.vlcvx.config.ts",
     "build:engine": "vite build -c vite.engine.config.ts && node scripts/hash-engine.mjs",
     "test": "vitest run"
   },

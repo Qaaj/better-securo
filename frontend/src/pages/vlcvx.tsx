@@ -11,6 +11,7 @@ import { useWorkspace } from '@/contexts/workspace-context'
 import { PageHeader } from '@/components/page-header'
 import { PayoutCharts, TokenChart } from '@/components/vlcvx-charts'
 import { BribeTables, RoundsTable } from '@/components/vlcvx-rounds'
+import { Input } from '@/components/ui/input'
 import { VlcvxSimulator } from '@/components/vlcvx-simulator'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -19,12 +20,32 @@ import type { VlcvxRound } from '@/types'
 
 const PROTOCOLS = ['cvx-crv', 'cvx-fxn', 'cvx-prisma'] as const
 
+const HOLDINGS_KEY = 'vlcvx:holdings'
+/** What the simulator pretends to hold until the person says how much they own. */
+const EXAMPLE_HOLDINGS = 10000
+
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '–')
 
 export default function VlcvxPage() {
   const { t } = useTranslation()
   const { canWrite } = useWorkspace()
   const queryClient = useQueryClient()
+  const [holdings, setHoldings] = useState(() => {
+    try {
+      return window.localStorage.getItem(HOLDINGS_KEY) ?? ''
+    } catch {
+      return ''
+    }
+  })
+  const changeHoldings = (value: string) => {
+    setHoldings(value)
+    try {
+      window.localStorage.setItem(HOLDINGS_KEY, value)
+    } catch {
+      // Storage blocked: the amount just does not persist.
+    }
+  }
+  const owned = Math.max(0, parseFloat(holdings) || 0)
   const [protocol, setProtocol] = useState<(typeof PROTOCOLS)[number]>('cvx-crv')
 
   const { data: summary, isLoading } = useQuery({
@@ -76,6 +97,23 @@ export default function VlcvxPage() {
         </p>
         {refreshButton}
       </div>
+
+      {summary?.enabled && hasData && (
+        <div className="bg-card rounded-xl border border-border shadow-sm px-4 py-3 mb-4 flex flex-wrap items-end gap-x-6 gap-y-2">
+          <div className="space-y-1.5">
+            <label htmlFor="vl-holdings" className="text-xs font-medium text-muted-foreground">{t('vlcvx.holdings')}</label>
+            <Input id="vl-holdings" type="number" min="0" step="any" placeholder={String(EXAMPLE_HOLDINGS)} className="h-8 w-40" value={holdings} onChange={(e) => changeHoldings(e.target.value)} />
+          </div>
+          {owned > 0 && current && current.latest_dollar_per_vl != null ? (
+            <p className="text-xs text-muted-foreground pb-1.5">
+              {t('vlcvx.holdingsLast', { value: usd(owned * current.latest_dollar_per_vl), round: current.latest_round })}
+              {current.average_dollar_per_vl_12 != null && ` · ${t('vlcvx.holdingsAverage', { value: usd(owned * current.average_dollar_per_vl_12) })}`}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground pb-1.5">{t('vlcvx.holdingsHint', { amount: EXAMPLE_HOLDINGS.toLocaleString('en-US') })}</p>
+          )}
+        </div>
+      )}
 
       {!summary?.enabled ? (
         <p className="text-sm text-muted-foreground text-center py-10">{t('vlcvx.disabled')}</p>
@@ -137,7 +175,7 @@ export default function VlcvxPage() {
               )}
             </TabsContent>
             <TabsContent value="simulator" className="mt-4">
-              <VlcvxSimulator protocols={summary.protocols} byProtocol={byProtocol} />
+              <VlcvxSimulator protocols={summary.protocols} byProtocol={byProtocol} amount={owned > 0 ? owned : EXAMPLE_HOLDINGS} />
             </TabsContent>
           </Tabs>
           <p className="text-[11px] text-muted-foreground">{t('vlcvx.disclaimer')}</p>

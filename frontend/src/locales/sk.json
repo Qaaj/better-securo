@@ -3538,6 +3538,10 @@
     "backtestRounds": "Last {{count}} rounds",
     "backtestAll": "All {{count}} rounds",
     "simDisclaimer": "Past payouts do not predict future ones: bribes depend on the market, on how many vote and on what pools are worth. Votium pays only holders who vote, a round is two weeks (about {{perYear}} a year), and gas to claim, the CVX price and the lock itself are not counted. The yield needs the CVX price you enter.",
-    "disclaimer": "Data is copied from Llama Airforce's public API and may lag or be revised. Not financial advice."
+    "disclaimer": "Data is copied from Llama Airforce's public API and may lag or be revised. Not financial advice.",
+    "holdings": "vlCVX you own",
+    "holdingsLast": "≈ {{value}} in round {{round}}",
+    "holdingsAverage": "{{value}} per round on the 12-round average",
+    "holdingsHint": "Leave empty to simulate {{amount}} vlCVX."
   }
 }
